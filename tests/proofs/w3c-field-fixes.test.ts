@@ -152,7 +152,7 @@ describe('parseZKPQuery', () => {
     expect(queries[0].fieldName).to.equal('credentialStatus.id');
   });
 
-  it('credentialStatus.type is filtered out by the allowlist', () => {
+  it('credentialStatus with only disallowed fields throws', () => {
     const query = {
       allowedIssuers: ['*'],
       context: '',
@@ -160,8 +160,9 @@ describe('parseZKPQuery', () => {
       credentialStatus: { type: {} }
     } as unknown as ZeroKnowledgeProofQuery;
 
-    const queries = parseZKPQuery(query);
-    expect(queries).to.deep.equal([{ operator: QueryOperators.$noop, fieldName: '' }]);
+    expect(() => parseZKPQuery(query)).to.throw(
+      'credentialStatus query contains no allowed fields'
+    );
   });
 
   it('only revocationNonce and id survive when other credentialStatus fields are present', () => {

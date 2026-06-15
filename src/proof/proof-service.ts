@@ -390,7 +390,6 @@ export class ProofService implements IProofService {
     const circuitQueries: Query[] = [];
     for (const propertyMetadata of propertiesMetadata) {
       let propertyCredentialType = credentialType;
-      // todo: check if we can move this to the parseQueryMetadata function
       if (propertyMetadata.fieldName.startsWith('credentialStatus.')) {
         if (!preparedCredential.credential.credentialStatus) {
           throw new Error('credential does not have credentialStatus but query requires it');

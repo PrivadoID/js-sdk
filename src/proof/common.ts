@@ -145,9 +145,14 @@ export const parseZKPQuery = (query: ZeroKnowledgeProofQuery): PropertyQuery[] =
     const allowed = Object.fromEntries(
       Object.entries(flattenedObject).filter(([key]) => ALLOWED_CREDENTIAL_STATUS_FIELDS.has(key))
     );
-    if (Object.keys(allowed).length) {
-      propertiesMetadata.push(...parseJsonDocumentObject(allowed));
+    if (!Object.keys(allowed).length) {
+      throw new Error(
+        `credentialStatus query contains no allowed fields — permitted: ${[
+          ...ALLOWED_CREDENTIAL_STATUS_FIELDS
+        ].join(', ')}`
+      );
     }
+    propertiesMetadata.push(...parseJsonDocumentObject(allowed));
   }
   if (propertiesMetadata.length === 0) {
     return [{ operator: QueryOperators.$noop, fieldName: '' }];
@@ -343,7 +348,7 @@ export const parseProofQueryMetadata = async (
   credentialType: string,
   ldContextJSON: string,
   query: ProofQuery,
-  options: Options,
+  options: ParseOptions,
   vp?: VerifiablePresentation
 ): Promise<QueryMetadata[]> => {
   const propertyQuery: PropertyQuery[] = [];
@@ -364,6 +369,13 @@ export const parseProofQueryMetadata = async (
       'credentialStatus',
       query.credentialStatus
     ).filter((q) => ALLOWED_CREDENTIAL_STATUS_FIELDS.has(q.fieldName));
+    if (!parsedCredentialStatusQueries.length) {
+      throw new Error(
+        `credentialStatus query contains no allowed fields — permitted: ${[
+          ...ALLOWED_CREDENTIAL_STATUS_FIELDS
+        ].join(', ')}`
+      );
+    }
     propertyQuery.push(...parsedCredentialStatusQueries);
   }
 
