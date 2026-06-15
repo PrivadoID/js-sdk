@@ -115,6 +115,11 @@ export type QueryMetadata = PropertyQuery & {
   merklizedSchema: boolean;
 };
 
+const ALLOWED_CREDENTIAL_STATUS_FIELDS = new Set([
+  'credentialStatus.revocationNonce',
+  'credentialStatus.id'
+]);
+
 export const parseZKPQuery = (query: ZeroKnowledgeProofQuery): PropertyQuery[] => {
   const propertiesMetadata: PropertyQuery[] = [];
   if (query.credentialSubject) {
@@ -122,10 +127,7 @@ export const parseZKPQuery = (query: ZeroKnowledgeProofQuery): PropertyQuery[] =
       query.credentialSubject as Record<string, JsonDocumentObject | undefined>,
       'credentialSubject'
     );
-    // an empty flattened object means there is nothing to disclose (e.g. subject is id/type only)
-    if (Object.keys(credSubjFlattened).length) {
-      propertiesMetadata.push(...parseJsonDocumentObject(credSubjFlattened));
-    }
+    propertiesMetadata.push(...parseJsonDocumentObject(credSubjFlattened));
   }
   if (query.expirationDate) {
     const expirationDate = parseJsonDocumentObject({ expirationDate: query.expirationDate });
@@ -141,9 +143,7 @@ export const parseZKPQuery = (query: ZeroKnowledgeProofQuery): PropertyQuery[] =
       'credentialStatus'
     );
     const allowed = Object.fromEntries(
-      Object.entries(flattenedObject).filter(
-        ([key]) => key === 'credentialStatus.revocationNonce' || key === 'credentialStatus.type'
-      )
+      Object.entries(flattenedObject).filter(([key]) => ALLOWED_CREDENTIAL_STATUS_FIELDS.has(key))
     );
     if (Object.keys(allowed).length) {
       propertiesMetadata.push(...parseJsonDocumentObject(allowed));
@@ -350,9 +350,7 @@ export const parseProofQueryMetadata = async (
 
   if (query.credentialSubject !== undefined) {
     propertyQuery.push(
-      ...parseDocumentToPropertyQueries('credentialSubject', query.credentialSubject).filter(
-        (q) => q.fieldName !== 'credentialSubject.type'
-      )
+      ...parseDocumentToPropertyQueries('credentialSubject', query.credentialSubject)
     );
   }
   if (query.expirationDate) {
@@ -365,11 +363,7 @@ export const parseProofQueryMetadata = async (
     const parsedCredentialStatusQueries = parseDocumentToPropertyQueries(
       'credentialStatus',
       query.credentialStatus
-    ).filter(
-      (q) =>
-        q.fieldName === 'credentialStatus.revocationNonce' ||
-        q.fieldName === 'credentialStatus.type'
-    );
+    ).filter((q) => ALLOWED_CREDENTIAL_STATUS_FIELDS.has(q.fieldName));
     propertyQuery.push(...parsedCredentialStatusQueries);
   }
 

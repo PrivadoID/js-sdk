@@ -3,6 +3,7 @@ import { Options, Path } from '@iden3/js-jsonld-merklization';
 import { W3CCredential } from './credential';
 import { QueryMetadata } from '../proof';
 import { VerifiablePresentation, JsonDocumentObject } from '../iden3comm';
+import { Operators } from '../circuits';
 
 export const stringByPath = (obj: { [key: string]: unknown }, path: string): string => {
   const parts = path.split('.');
@@ -67,25 +68,33 @@ export const createVerifiablePresentation = (
     vcTypes.push(tp);
   }
 
+  const baseContext = [VerifiableConstants.JSONLD_SCHEMA.W3C_CREDENTIAL_2018];
+  const ldContext = baseContext[0] === context ? baseContext : [...baseContext, context];
+
+  const hasCredentialStatusQuery = queries.some((q) => q.fieldName.startsWith('credentialStatus.'));
   const skeleton = {
-    '@context': [VerifiableConstants.JSONLD_SCHEMA.W3C_CREDENTIAL_2018],
+    '@context': ldContext,
     type: VerifiableConstants.CREDENTIAL_TYPE.W3C_VERIFIABLE_PRESENTATION,
     verifiableCredential: {
       '@context': credential['@context'],
       type: vcTypes,
       credentialSubject: {
-        // id: credential.credentialSubject.id, // Should we include id in credentialSubject?
         type: tp
       },
-      credentialStatus: {
-        id: credential.credentialStatus?.id,
-        type: credential.credentialStatus?.type
-      }
+      ...(hasCredentialStatusQuery && credential.credentialStatus
+        ? {
+            credentialStatus: {
+              id: credential.credentialStatus.id,
+              type: credential.credentialStatus.type
+            }
+          }
+        : {})
     }
   };
 
+  const sdQueries = queries.filter((q) => q.operator === Operators.SD);
   const w3cResult: JsonDocumentObject = {};
-  for (const query of queries) {
+  for (const query of sdQueries) {
     const parts = query.fieldName.split('.');
     const leaf = parts.pop() as string;
     let node = w3cResult;

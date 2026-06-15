@@ -425,7 +425,7 @@ export class ProofService implements IProofService {
         context,
         credentialType,
         preparedCredential.credential,
-        sdQueries
+        queriesMetadata
       );
     }
 
