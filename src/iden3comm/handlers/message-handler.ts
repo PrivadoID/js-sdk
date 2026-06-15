@@ -4,15 +4,13 @@ import { RevocationStatusMessageHandlerOptions } from './revocation-status';
 import { ContractMessageHandlerOptions } from './contract-request';
 import { PaymentHandlerOptions, PaymentRequestMessageHandlerOptions } from './payment';
 import { MediaType } from '../constants';
-import { ProvingMethodAlg, Token, proving } from '@iden3/js-jwz';
+import { ProvingMethodAlg, Token } from '@iden3/js-jwz';
 import { DID } from '@iden3/js-iden3-core';
 import { verifyExpiresTime } from './common';
 import { byteDecoder } from '../../utils';
+import { defaultProvingMethodAlg } from '../utils/accept-profile';
 
-/**
- * Default proving method algorithm for ZKP messages
- */
-export const defaultProvingMethodAlg = proving.provingMethodGroth16AuthV2Instance.methodAlg;
+export { defaultProvingMethodAlg };
 
 /**
  * iden3 Basic protocol message handler options

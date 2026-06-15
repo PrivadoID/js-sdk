@@ -13,13 +13,14 @@ import {
   Attachment
 } from '../types';
 import { DID, getUnixTimestamp } from '@iden3/js-iden3-core';
-import { ProvingMethodAlg, proving } from '@iden3/js-jwz';
+import { ProvingMethodAlg } from '@iden3/js-jwz';
 
 import * as uuid from 'uuid';
 import { ProofQuery } from '../../verifiable';
 import { byteDecoder, byteEncoder } from '../../utils';
 import {
   HandlerPackerParams,
+  ProofRequestCredential,
   initDefaultPackerOptions,
   processZeroKnowledgeProofRequests,
   verifyExpiresTime
@@ -28,14 +29,9 @@ import { CircuitId, getGroupedCircuitIdsWithSubVersions } from '../../circuits';
 import {
   AbstractMessageHandler,
   BasicHandlerOptions,
-  IProtocolMessageHandler,
-  defaultProvingMethodAlg
+  IProtocolMessageHandler
 } from './message-handler';
-import {
-  acceptHasProvingMethodAlg,
-  buildAcceptFromProvingMethodAlg,
-  parseAcceptProfile
-} from '../utils';
+import { getDefaultZKProvingMethodAlg, parseAcceptProfile } from '../utils';
 
 /**
  * Options to pass to createAuthorizationRequest function
@@ -175,6 +171,7 @@ type AuthReqOptions = {
   mediaType?: MediaType;
   bypassProofsCache?: boolean;
   allowExpiredCredentials?: boolean;
+  credentials?: Map<string, ProofRequestCredential>;
 };
 
 type AuthRespOptions = {
@@ -284,7 +281,8 @@ export class AuthHandler
         mediaType,
         supportedCircuits: this._supportedCircuits,
         bypassProofsCache: ctx.bypassProofsCache,
-        allowExpiredCredentials: ctx.allowExpiredCredentials
+        allowExpiredCredentials: ctx.allowExpiredCredentials,
+        credentials: ctx.credentials
       }
     );
 
@@ -335,7 +333,8 @@ export class AuthHandler
     const msgBytes = byteEncoder.encode(JSON.stringify(authResponse));
 
     const packerOpts = initDefaultPackerOptions(opts.mediaType, opts.packerOptions, {
-      provingMethodAlg: this.getDefaultProvingMethodAlg(
+      provingMethodAlg: getDefaultZKProvingMethodAlg(
+        this._packerMgr,
         opts.preferredAuthProvingMethod,
         authRequest.body.accept
       ),
@@ -538,41 +537,5 @@ export class AuthHandler
       mediaType = ctx.mediaType;
     }
     return mediaType;
-  }
-
-  private getDefaultProvingMethodAlg(
-    preferredAuthProvingMethod?: ProvingMethodAlg,
-    accept?: string[]
-  ): ProvingMethodAlg {
-    // if no accept is given, return default
-    if (!accept?.length) {
-      return defaultProvingMethodAlg;
-    }
-
-    const preferredOrder = [
-      proving.provingMethodGroth16AuthV3_8_32Instance.methodAlg,
-      proving.provingMethodGroth16AuthV3Instance.methodAlg
-    ];
-    if (preferredAuthProvingMethod) {
-      const idx = preferredOrder.indexOf(preferredAuthProvingMethod);
-      if (idx !== -1) {
-        preferredOrder.splice(idx, 1);
-      }
-      preferredOrder.unshift(preferredAuthProvingMethod);
-    }
-
-    for (const methodAlg of preferredOrder) {
-      if (
-        this._packerMgr.isProfileSupported(
-          MediaType.ZKPMessage,
-          buildAcceptFromProvingMethodAlg(methodAlg)
-        ) &&
-        acceptHasProvingMethodAlg(accept, methodAlg)
-      ) {
-        return methodAlg;
-      }
-    }
-
-    return defaultProvingMethodAlg;
   }
 }
