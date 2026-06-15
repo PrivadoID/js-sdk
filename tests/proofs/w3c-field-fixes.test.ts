@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createVerifiablePresentation,
+  parseDocumentToPropertyQueries,
   parseJsonDocumentObject,
   parseZKPQuery,
   QueryMetadata,
@@ -67,11 +68,89 @@ describe('parseZKPQuery', () => {
       allowedIssuers: ['*'],
       context: '',
       type: '',
-      // full disclosure of a subject whose only fields are id/type yields {} after flattening
       credentialSubject: {}
     } as unknown as ZeroKnowledgeProofQuery;
 
     const queries = parseZKPQuery(query);
+    expect(queries).to.deep.equal([{ operator: QueryOperators.$noop, fieldName: '' }]);
+  });
+
+  it('credentialStatus: {} is treated as noop (no queries added)', () => {
+    const query = {
+      allowedIssuers: ['*'],
+      context: '',
+      type: '',
+      credentialStatus: {}
+    } as unknown as ZeroKnowledgeProofQuery;
+
+    const queries = parseZKPQuery(query);
+    expect(queries).to.deep.equal([{ operator: QueryOperators.$noop, fieldName: '' }]);
+  });
+
+  it('credentialStatus.revocationNonce passes through', () => {
+    const query = {
+      allowedIssuers: ['*'],
+      context: '',
+      type: '',
+      credentialStatus: { revocationNonce: { $eq: 123 } }
+    } as unknown as ZeroKnowledgeProofQuery;
+
+    const queries = parseZKPQuery(query);
+    expect(queries).to.have.length(1);
+    expect(queries[0].fieldName).to.equal('credentialStatus.revocationNonce');
+  });
+
+  it('credentialStatus.type passes through', () => {
+    const query = {
+      allowedIssuers: ['*'],
+      context: '',
+      type: '',
+      credentialStatus: { type: {} }
+    } as unknown as ZeroKnowledgeProofQuery;
+
+    const queries = parseZKPQuery(query);
+    expect(queries).to.have.length(1);
+    expect(queries[0].fieldName).to.equal('credentialStatus.type');
+  });
+
+  it('credentialStatus.id is filtered out by the allowlist', () => {
+    const query = {
+      allowedIssuers: ['*'],
+      context: '',
+      type: '',
+      credentialStatus: { id: {} }
+    } as unknown as ZeroKnowledgeProofQuery;
+
+    const queries = parseZKPQuery(query);
+    expect(queries).to.deep.equal([{ operator: QueryOperators.$noop, fieldName: '' }]);
+  });
+
+  it('only revocationNonce and type survive when other credentialStatus fields are present', () => {
+    const query = {
+      allowedIssuers: ['*'],
+      context: '',
+      type: '',
+      credentialStatus: { id: {}, revocationNonce: {}, type: {} }
+    } as unknown as ZeroKnowledgeProofQuery;
+
+    const queries = parseZKPQuery(query);
+    expect(queries).to.have.length(2);
+    const fieldNames = queries.map((q) => q.fieldName);
+    expect(fieldNames).to.include('credentialStatus.revocationNonce');
+    expect(fieldNames).to.include('credentialStatus.type');
+    expect(fieldNames).not.to.include('credentialStatus.id');
+  });
+});
+
+describe('parseDocumentToPropertyQueries', () => {
+  it('credentialSubject: {} throws — full SD is not supported', () => {
+    expect(() => parseDocumentToPropertyQueries('credentialSubject', {})).to.throw(
+      'query must have at least 1 predicate'
+    );
+  });
+
+  it('credentialSubject: undefined returns noop', () => {
+    const queries = parseDocumentToPropertyQueries('credentialSubject', undefined);
     expect(queries).to.deep.equal([{ operator: QueryOperators.$noop, fieldName: '' }]);
   });
 });

@@ -135,13 +135,18 @@ export const parseZKPQuery = (query: ZeroKnowledgeProofQuery): PropertyQuery[] =
     const issuanceDate = parseJsonDocumentObject({ issuanceDate: query.issuanceDate });
     propertiesMetadata.push(...issuanceDate);
   }
-  if (query.credentialStatus) {
+  if (query.credentialStatus && Object.keys(query.credentialStatus).length > 0) {
     const flattenedObject = flattenNestedObject(
       query.credentialStatus as Record<string, JsonDocumentObject | undefined>,
       'credentialStatus'
     );
-    if (Object.keys(flattenedObject).length) {
-      propertiesMetadata.push(...parseJsonDocumentObject(flattenedObject));
+    const allowed = Object.fromEntries(
+      Object.entries(flattenedObject).filter(
+        ([key]) => key === 'credentialStatus.revocationNonce' || key === 'credentialStatus.type'
+      )
+    );
+    if (Object.keys(allowed).length) {
+      propertiesMetadata.push(...parseJsonDocumentObject(allowed));
     }
   }
   if (propertiesMetadata.length === 0) {
@@ -166,49 +171,16 @@ const flattenNestedObject = (
 
 export const parseDocumentToPropertyQueries = (
   documentName: 'credentialStatus' | 'credentialSubject',
-  document?: JsonDocumentObject,
-  vp?: VerifiablePresentation
+  document?: JsonDocumentObject
 ): PropertyQuery[] => {
   if (!document) {
     return [{ operator: QueryOperators.$noop, fieldName: '' }];
-  }
-  // if document is empty, full disclosure is needed
-  if (Object.entries(document).length === 0) {
-    if (!vp) {
-      throw new Error(`VerifiablePresentation is required for full disclosure of ${documentName}`);
-    }
-    const queries: PropertyQuery[] = [];
-    const flattened = flattenToQueryShape(
-      (vp.verifiableCredential as Record<string, unknown>)[documentName] as Record<string, unknown>,
-      documentName
-    );
-    queries.push(...parseJsonDocumentObject(flattened));
-    return queries;
   }
   const flattenedObject = flattenNestedObject(
     document as Record<string, JsonDocumentObject | undefined>,
     documentName
   );
   return parseJsonDocumentObject(flattenedObject);
-};
-
-export const flattenToQueryShape = (
-  obj: Record<string, unknown>,
-  parentKey = ''
-): JsonDocumentObject => {
-  const result: JsonDocumentObject = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (key === 'id' || key === 'type') {
-      continue;
-    }
-    const fullKey = parentKey ? `${parentKey}.${key}` : key;
-    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      Object.assign(result, flattenToQueryShape(value as Record<string, unknown>, fullKey));
-    } else {
-      result[fullKey] = {};
-    }
-  }
-  return result;
 };
 
 export const parseJsonDocumentObject = (document?: JsonDocumentObject): PropertyQuery[] => {
@@ -378,7 +350,9 @@ export const parseProofQueryMetadata = async (
 
   if (query.credentialSubject !== undefined) {
     propertyQuery.push(
-      ...parseDocumentToPropertyQueries('credentialSubject', query.credentialSubject, vp)
+      ...parseDocumentToPropertyQueries('credentialSubject', query.credentialSubject).filter(
+        (q) => q.fieldName !== 'credentialSubject.type'
+      )
     );
   }
   if (query.expirationDate) {
@@ -387,10 +361,16 @@ export const parseProofQueryMetadata = async (
   if (query.issuanceDate) {
     propertyQuery.push(...parseJsonDocumentObject({ issuanceDate: query.issuanceDate }));
   }
-  if (query.credentialStatus !== undefined) {
-    propertyQuery.push(
-      ...parseDocumentToPropertyQueries('credentialStatus', query.credentialStatus, vp)
+  if (query.credentialStatus !== undefined && Object.keys(query.credentialStatus).length > 0) {
+    const parsedCredentialStatusQueries = parseDocumentToPropertyQueries(
+      'credentialStatus',
+      query.credentialStatus
+    ).filter(
+      (q) =>
+        q.fieldName === 'credentialStatus.revocationNonce' ||
+        q.fieldName === 'credentialStatus.type'
     );
+    propertyQuery.push(...parsedCredentialStatusQueries);
   }
 
   if (propertyQuery.length === 0) {

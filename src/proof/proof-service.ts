@@ -26,7 +26,6 @@ import {
 import {
   PreparedCredential,
   QueryMetadata,
-  flattenToQueryShape,
   parseQueryMetadata,
   parseZKPQuery,
   isAuthCircuit,
@@ -45,8 +44,7 @@ import {
   PROTOCOL_CONSTANTS,
   VerifiablePresentation,
   JsonDocumentObject,
-  ZeroKnowledgeProofAuthResponse,
-  ZeroKnowledgeProofQuery
+  ZeroKnowledgeProofAuthResponse
 } from '../iden3comm';
 import { cacheLoader } from '../schema-processor';
 import { ICircuitStorage, IProofStorage, IStateStorage } from '../storage';
@@ -370,11 +368,7 @@ export class ProofService implements IProofService {
       throw new Error(VerifiableConstants.ERRORS.PROOF_SERVICE_PROFILE_GENESIS_DID_MISMATCH);
     }
 
-    const processedQuery = this.preprocessZeroKnowledgeProofRequest(
-      query,
-      preparedCredential.credential
-    );
-    const propertiesMetadata = parseZKPQuery(processedQuery);
+    const propertiesMetadata = parseZKPQuery(query);
     if (!propertiesMetadata.length) {
       throw new Error(VerifiableConstants.ERRORS.PROOF_SERVICE_NO_QUERIES_IN_ZKP_REQUEST);
     }
@@ -632,30 +626,6 @@ export class ProofService implements IProofService {
       throw new Error(`can't load ld context from url ${context}`);
     }
     return byteEncoder.encode(JSON.stringify(ldSchema));
-  }
-
-  // for full object SD — expands empty {} to all credential fields
-  private preprocessZeroKnowledgeProofRequest(
-    query: ZeroKnowledgeProofQuery,
-    cred: W3CCredential
-  ): ZeroKnowledgeProofQuery {
-    const { credentialStatus, credentialSubject } = query;
-    const queryPatch: Partial<ZeroKnowledgeProofQuery> = {};
-
-    if (credentialSubject && Object.keys(credentialSubject).length === 0) {
-      queryPatch.credentialSubject = flattenToQueryShape(cred.credentialSubject);
-    }
-    if (credentialStatus && Object.keys(credentialStatus).length === 0 && cred.credentialStatus) {
-      queryPatch.credentialStatus = flattenToQueryShape(
-        cred.credentialStatus as unknown as Record<string, unknown>
-      );
-    }
-
-    if (!Object.keys(queryPatch).length) {
-      return query;
-    }
-
-    return { ...query, ...queryPatch };
   }
 
   /** {@inheritdoc IProofService.generateAuthV2Inputs} */
