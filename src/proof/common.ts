@@ -211,7 +211,7 @@ export const parseJsonDocumentObject = (document?: JsonDocumentObject): Property
     }
 
     for (const [operatorName, operatorValue] of fieldReqEntries) {
-      if (!(operatorName in QueryOperators)) {
+      if (!Object.hasOwn(QueryOperators, operatorName)) {
         throw new Error(`operator is not supported by lib`);
       }
       const operator = QueryOperators[operatorName as keyof typeof QueryOperators];

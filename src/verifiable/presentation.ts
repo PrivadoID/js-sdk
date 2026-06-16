@@ -69,8 +69,7 @@ export const createVerifiablePresentation = (
   }
 
   const baseContext = [VerifiableConstants.JSONLD_SCHEMA.W3C_CREDENTIAL_2018];
-  const ldContext = baseContext[0] === context ? baseContext : [...baseContext, context];
-
+  const ldContext = context && baseContext[0] !== context ? [...baseContext, context] : baseContext;
   const hasCredentialStatusQuery = queries.some((q) => q.fieldName.startsWith('credentialStatus.'));
   const skeleton = {
     '@context': ldContext,
