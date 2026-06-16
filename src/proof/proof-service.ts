@@ -418,8 +418,11 @@ export class ProofService implements IProofService {
     }
 
     const sdQueries = queriesMetadata.filter((q) => q.operator === Operators.SD);
+    const hasCredentialStatusQuery = queriesMetadata.some((q) =>
+      q.fieldName.startsWith('credentialStatus.')
+    );
     let vp: VerifiablePresentation | undefined;
-    if (sdQueries.length) {
+    if (sdQueries.length || hasCredentialStatusQuery) {
       vp = createVerifiablePresentation(
         context,
         credentialType,

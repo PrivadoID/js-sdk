@@ -83,7 +83,6 @@ export const createVerifiablePresentation = (
       ...(hasCredentialStatusQuery && credential.credentialStatus
         ? {
             credentialStatus: {
-              id: credential.credentialStatus.id,
               type: credential.credentialStatus.type
             }
           }

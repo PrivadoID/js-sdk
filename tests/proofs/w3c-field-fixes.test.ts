@@ -86,7 +86,8 @@ describe('createVerifiablePresentation selective disclosure', () => {
     ] as unknown as QueryMetadata[];
 
     const vp = createVerifiablePresentation('', 'BasicPerson', credential, queries);
-    expect(vp.verifiableCredential.credentialStatus?.id).to.eq('https://example.com/status');
+    // only type is in the skeleton — id has no ZKP behind it so must not be included
+    expect(vp.verifiableCredential.credentialStatus?.id).to.be.undefined;
     expect(vp.verifiableCredential.credentialStatus?.type).to.eq(
       'Iden3ReverseSparseMerkleTreeProof'
     );
