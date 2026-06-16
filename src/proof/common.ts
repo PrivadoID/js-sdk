@@ -395,11 +395,9 @@ export const parseProofQueryMetadata = async (
       if (p.fieldName.startsWith('credentialStatus.')) {
         const statusType = vp?.verifiableCredential?.credentialStatus?.type;
         if (!statusType) {
-          // the merklization path of credentialStatus fields (e.g. revocationNonce) is
-          // status-type-specific, so the verifier needs the type from a verifiablePresentation
           throw new Error(
             'credentialStatus.type is required to verify a credentialStatus query: ' +
-              'include it via a verifiablePresentation (selective disclosure)'
+              'include verifiableCredential.credentialStatus.type in the verifiablePresentation'
           );
         }
         credType = statusType;

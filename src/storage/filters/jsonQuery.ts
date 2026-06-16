@@ -330,7 +330,9 @@ export const StandardJSONCredentialsQueryFilter = (query: ProofQuery): FilterQue
           // Credentials store these fields as ISO strings; convert Unix-second timestamps so
           // the date comparator (Date.parse) can handle both formats correctly.
           const value =
-            typeof rawValue === 'number' ? new Date(rawValue * 1000).toISOString() : rawValue;
+            typeof rawValue === 'number' || (typeof rawValue === 'string' && /^\d+$/.test(rawValue))
+              ? new Date(Number(rawValue) * 1000).toISOString()
+              : rawValue;
           return new FilterQuery(
             queryKey,
             comparatorOptions[comparator as keyof typeof comparatorOptions],
