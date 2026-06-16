@@ -291,6 +291,12 @@ export const fieldValueFromVerifiablePresentation = async (
     merklizedPath = await Path.fromDocument(null, strVerifiablePresentation, p, {
       documentLoader: ldLoader
     });
+    if (
+      p === 'verifiableCredential.credentialStatus.id' &&
+      merklizedPath.parts[merklizedPath.parts.length - 1] === '@id'
+    ) {
+      merklizedPath.parts.pop();
+    }
   } catch (e) {
     throw new Error(`can't build path to '${fieldName}' key`);
   }

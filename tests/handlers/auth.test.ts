@@ -3269,7 +3269,8 @@ describe('auth', () => {
           type: 'BasicPerson',
           context: 'ipfs://QmZbsTnRwtCmbdg3r9o7Txid37LmvPcvmzVi1Abvqu1WKL',
           credentialStatus: {
-            revocationNonce: {}
+            revocationNonce: {},
+            id: {}
           },
           expirationDate: {},
           issuanceDate: {},

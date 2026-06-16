@@ -305,6 +305,12 @@ export const parseQueryMetadata = async (
   } else {
     try {
       const path = await buildFieldPath(ldContextJSON, credentialType, strippedFieldName, options);
+      if (
+        originalFieldName === 'credentialStatus.id' &&
+        path.parts[path.parts.length - 1] === '@id'
+      ) {
+        path.parts.pop();
+      }
       query.claimPathKey = await path.mtEntry();
       query.path = path;
     } catch (e) {
