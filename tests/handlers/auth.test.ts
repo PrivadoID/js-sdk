@@ -3359,7 +3359,7 @@ describe('auth', () => {
     await credWallet.saveAll([employeeCred]);
 
     // Only $eq on credentialStatus — no SD fields.
-    // The prover creates a VP skeleton (id + type) so the verifier can resolve the
+    // The prover creates a VP skeleton (type only) so the verifier can resolve the
     // merklization path even when no values are selectively disclosed.
     const proofReqs: ZeroKnowledgeProofRequest[] = [
       {
