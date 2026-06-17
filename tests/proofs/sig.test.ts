@@ -26,6 +26,7 @@ import { RHSResolver } from '../../src/credentials';
 import { JsonRpcProvider } from 'ethers';
 import { RPC_URL } from '../helpers';
 import { schemaLoaderForTests } from '../mocks/schema';
+import { Options } from '@iden3/js-jsonld-merklization';
 
 describe.sequential('sig proofs', () => {
   let idWallet: IdentityWallet;
@@ -39,7 +40,7 @@ describe.sequential('sig proofs', () => {
   let userDID: DID;
   let issuerDID: DID;
   let circuitStorage: ICircuitStorage;
-  let merklizeOpts;
+  let merklizeOpts: Options;
 
   const mockStateStorage: IStateStorage = {
     getLatestStateById: async () => {
@@ -488,11 +489,15 @@ describe.sequential('sig proofs', () => {
     expect(proof).not.to.be.undefined;
 
     expect(vp).to.deep.equal({
-      '@context': ['https://www.w3.org/2018/credentials/v1'],
+      '@context': [
+        'https://www.w3.org/2018/credentials/v1',
+        'ipfs://QmQXQ5gBNfJuc9QXy5pGbaVfLxzFjCDAvPs4Fa43BaU1U4'
+      ],
       type: 'VerifiablePresentation',
       verifiableCredential: {
         '@context': [
           'https://www.w3.org/2018/credentials/v1',
+          'https://schema.iden3.io/core/jsonld/iden3proofs.jsonld',
           'ipfs://QmQXQ5gBNfJuc9QXy5pGbaVfLxzFjCDAvPs4Fa43BaU1U4'
         ],
         type: ['VerifiableCredential', 'DeliveryAddress'],
@@ -517,11 +522,15 @@ describe.sequential('sig proofs', () => {
     expect(deliveryProof).not.to.be.undefined;
 
     expect(deliveryVP).to.deep.equal({
-      '@context': ['https://www.w3.org/2018/credentials/v1'],
+      '@context': [
+        'https://www.w3.org/2018/credentials/v1',
+        'ipfs://QmZreEq1z5tMAuNBNTXjfpYMQbQ8KL7YkkVBt5nG1bUqJT'
+      ],
       type: 'VerifiablePresentation',
       verifiableCredential: {
         '@context': [
           'https://www.w3.org/2018/credentials/v1',
+          'https://schema.iden3.io/core/jsonld/iden3proofs.jsonld',
           'ipfs://QmZreEq1z5tMAuNBNTXjfpYMQbQ8KL7YkkVBt5nG1bUqJT'
         ],
         type: ['VerifiableCredential', 'DeliverAddressMultiTest'],

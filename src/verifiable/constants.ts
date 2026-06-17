@@ -54,6 +54,7 @@ export const VerifiableConstants = Object.freeze({
     W3C_VERIFIABLE_PRESENTATION: 'VerifiablePresentation'
   },
   CREDENTIAL_SUBJECT_PATH: 'https://www.w3.org/2018/credentials#credentialSubject',
+  CREDENTIAL_STATUS_PATH: 'https://www.w3.org/2018/credentials#credentialStatus',
   JSONLD_SCHEMA: {
     // JSONLDSchemaIden3Credential is a schema for context with Iden3Credential type
     IDEN3_CREDENTIAL: 'https://schema.iden3.io/core/jsonld/iden3proofs.jsonld',

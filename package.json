@@ -1,6 +1,6 @@
 {
   "name": "@0xpolygonid/js-sdk",
-  "version": "1.44.0",
+  "version": "1.45.0",
   "description": "SDK to work with Polygon ID",
   "source": "./src/index.ts",
   "exports": {

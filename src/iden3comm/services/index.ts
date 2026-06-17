@@ -1,2 +1,2 @@
 export { JoseService } from './jose';
-export { KeyResolver, DefaultKMSKeyResolver } from './key-resolver';
+export { type KeyResolver, DefaultKMSKeyResolver } from './key-resolver';
