@@ -78,7 +78,7 @@ export class AtomicQueryV3OnChainInputs extends BaseConfig {
       throw new Error(CircuitError.InvalidProofType);
     }
 
-    if (!this.challenge) {
+    if (this.challenge === null || this.challenge === undefined) {
       throw new Error(CircuitError.EmptyChallenge);
     }
 

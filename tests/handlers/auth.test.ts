@@ -1119,6 +1119,8 @@ describe('auth', () => {
     const expectedAuthChallenge =
       '1234567890123456789012345678901234567890123456789012345678901234';
 
+    const zeroChallenge = '0';
+
     const proofReqs: ZeroKnowledgeProofRequest[] = [
       {
         id: 1,
@@ -1143,7 +1145,14 @@ describe('auth', () => {
         params: {
           challenge: expectedAuthChallenge
         }
-      } as ZeroKnowledgeProofRequest
+      } as ZeroKnowledgeProofRequest,
+      {
+        id: 3,
+        circuitId: CircuitId.AuthV3_8_32,
+        params: {
+          challenge: zeroChallenge
+        }
+      }
     ];
 
     const authReqBody: AuthorizationRequestMessageBody = {
@@ -1164,8 +1173,8 @@ describe('auth', () => {
     const msgBytes = byteEncoder.encode(JSON.stringify(authReq));
     const authRes = await authHandler.handleAuthorizationRequest(userDID, msgBytes);
 
-    expect(authRes.authResponse.body.scope).to.have.lengthOf(2);
-    const [onChainProofResp, authProofResp] = authRes.authResponse.body.scope;
+    expect(authRes.authResponse.body.scope).to.have.lengthOf(3);
+    const [onChainProofResp, authProofResp, zeroChallengeResp] = authRes.authResponse.body.scope;
     expect(onChainProofResp.circuitId).to.contain(CircuitId.AtomicQueryV3OnChainStable);
 
     expect(onChainProofResp.pub_signals[8]).to.equal(expectedChallenge.toString());
@@ -1173,6 +1182,8 @@ describe('auth', () => {
     expect(authProofResp.pub_signals[1]).to.equal(expectedAuthChallenge.toString());
 
     expect(authProofResp.circuitId).to.equal(CircuitId.AuthV3_8_32);
+
+    expect(zeroChallengeResp.pub_signals[1]).to.equal(zeroChallenge);
   });
 
   it('auth response: TestVerifyWithAtomicMTPProof', async () => {

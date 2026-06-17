@@ -51,7 +51,7 @@ export class AuthV2Inputs extends BaseConfig {
       throw new Error(CircuitError.EmptyChallengeSignature);
     }
 
-    if (!this.challenge) {
+    if (this.challenge === null || this.challenge === undefined) {
       throw new Error(CircuitError.EmptyChallenge);
     }
   }
