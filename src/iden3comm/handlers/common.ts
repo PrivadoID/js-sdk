@@ -48,7 +48,7 @@ export type HandlerPackerParams =
  * @param requestScope - An array of ZeroKnowledgeProofRequest objects.
  * @returns A Map<number, { query: ZeroKnowledgeProofQuery; linkNonce: number }> representing the grouped queries.
  */
-const getGroupedQueries = (
+export const getGroupedQueries = (
   requestScope: ZeroKnowledgeProofRequest[]
 ): Map<number, { query: ZeroKnowledgeProofQuery; linkNonce: number }> =>
   requestScope.reduce((acc, proofReq) => {
@@ -89,6 +89,15 @@ const getGroupedQueries = (
   }, new Map<number, { query: ZeroKnowledgeProofQuery; linkNonce: number }>());
 
 /**
+ * A credential explicitly provided for a proof request, bypassing credential lookup.
+ * @public
+ */
+export type ProofRequestCredential = {
+  credential: W3CCredential;
+  linkNonce?: bigint;
+};
+
+/**
  * Processes zero knowledge proof requests.
  *
  * @param to - The identifier of the recipient.
@@ -111,6 +120,7 @@ export const processZeroKnowledgeProofRequests = async (
     challenge?: bigint;
     bypassProofsCache?: boolean;
     allowExpiredCredentials?: boolean;
+    credentials?: Map<string, ProofRequestCredential>;
   }
 ): Promise<ZeroKnowledgeProofResponse[]> => {
   const requestScope = requests ?? [];
@@ -140,6 +150,22 @@ export const processZeroKnowledgeProofRequests = async (
       }
 
       const query = proofReq.query;
+
+      const providedCredential = opts.credentials?.get(proofReq.id.toString());
+      if (providedCredential) {
+        zkpRes = await proofService.generateProof(proofReq, to, {
+          verifierDid: from,
+          challenge: opts.challenge,
+          skipRevocation: Boolean(query?.skipClaimRevocationCheck),
+          credential: providedCredential.credential,
+          linkNonce: providedCredential.linkNonce,
+          bypassCache: opts.bypassProofsCache,
+          allowExpiredCredentials: opts.allowExpiredCredentials
+        });
+        zkpResponses.push(zkpRes);
+        continue;
+      }
+
       const groupId = query?.groupId as number | undefined;
       const combinedQueryData = combinedQueries.get(groupId as number);
 

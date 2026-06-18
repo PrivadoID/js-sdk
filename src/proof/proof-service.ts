@@ -26,9 +26,9 @@ import {
 import {
   PreparedCredential,
   QueryMetadata,
-  isAuthCircuit,
-  parseCredentialSubject,
   parseQueryMetadata,
+  parseZKPQuery,
+  isAuthCircuit,
   transformQueryValueToBigInts
 } from './common';
 import { IZKProver, NativeProver } from './provers/prover';
@@ -368,9 +368,7 @@ export class ProofService implements IProofService {
       throw new Error(VerifiableConstants.ERRORS.PROOF_SERVICE_PROFILE_GENESIS_DID_MISMATCH);
     }
 
-    const propertiesMetadata = parseCredentialSubject(
-      query.credentialSubject as JsonDocumentObject
-    );
+    const propertiesMetadata = parseZKPQuery(query);
     if (!propertiesMetadata.length) {
       throw new Error(VerifiableConstants.ERRORS.PROOF_SERVICE_NO_QUERIES_IN_ZKP_REQUEST);
     }
@@ -390,12 +388,18 @@ export class ProofService implements IProofService {
     const credentialType = query['type'] as string;
     const queriesMetadata: QueryMetadata[] = [];
     const circuitQueries: Query[] = [];
-
     for (const propertyMetadata of propertiesMetadata) {
+      let propertyCredentialType = credentialType;
+      if (propertyMetadata.fieldName.startsWith('credentialStatus.')) {
+        if (!preparedCredential.credential.credentialStatus) {
+          throw new Error('credential does not have credentialStatus but query requires it');
+        }
+        propertyCredentialType = preparedCredential.credential.credentialStatus.type;
+      }
       const queryMetadata = await parseQueryMetadata(
         propertyMetadata,
         byteDecoder.decode(ldContext),
-        credentialType,
+        propertyCredentialType,
         {
           ...this._ldOptions,
           legacyNoopOperator: [
@@ -404,7 +408,6 @@ export class ProofService implements IProofService {
           ].includes(proofReq.circuitId)
         }
       );
-
       queriesMetadata.push(queryMetadata);
       const circuitQuery = await this.toCircuitsQuery(
         preparedCredential.credential,
@@ -415,13 +418,16 @@ export class ProofService implements IProofService {
     }
 
     const sdQueries = queriesMetadata.filter((q) => q.operator === Operators.SD);
+    const hasCredentialStatusQuery = queriesMetadata.some((q) =>
+      q.fieldName.startsWith('credentialStatus.')
+    );
     let vp: VerifiablePresentation | undefined;
-    if (sdQueries.length) {
+    if (sdQueries.length || hasCredentialStatusQuery) {
       vp = createVerifiablePresentation(
         context,
         credentialType,
         preparedCredential.credential,
-        sdQueries
+        queriesMetadata
       );
     }
 
@@ -598,8 +604,9 @@ export class ProofService implements IProofService {
     }
 
     if (queryMetadata.operator === Operators.SD) {
+      let v;
       const [first, ...rest] = queryMetadata.fieldName.split('.');
-      let v = credential.credentialSubject[first];
+      v = credential[first as keyof W3CCredential];
       for (const part of rest) {
         v = (v as JsonDocumentObject)[part];
       }

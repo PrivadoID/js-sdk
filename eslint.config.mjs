@@ -54,7 +54,9 @@ export default [
               'SPLV',
               'EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
               '4uhcVJyU9pJkvQyS88uRDiswHXSCkY3z',
-              '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'
+              '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
+              'Rica',
+              'issurance'
             ]
           }
         }

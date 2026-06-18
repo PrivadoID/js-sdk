@@ -28,7 +28,7 @@ import {
   verifyFieldValueInclusionNativeExistsSupport,
   checkCircuitOperator
 } from './query';
-import { parseQueriesMetadata, QueryMetadata } from '../common';
+import { parseProofQueryMetadata, QueryMetadata } from '../common';
 import { calculateQueryHashV3 } from './query-hash';
 import { JsonLd } from 'jsonld/jsonld-spec';
 import {
@@ -249,13 +249,14 @@ export class PubSignalsVerifier {
       throw new Error(`can't load schema for request query`);
     }
 
-    const queriesMetadata = await parseQueriesMetadata(
-      query.type,
+    const queriesMetadata = await parseProofQueryMetadata(
+      query.type || '',
       JSON.stringify(context),
-      query.credentialSubject as JsonDocumentObject,
+      query,
       {
         documentLoader: loader
-      }
+      },
+      verifiablePresentation
     );
 
     if (!circuitId) {
@@ -448,7 +449,6 @@ export class PubSignalsVerifier {
       throw new Error(`can't load schema for request query`);
     }
     const ldContextJSON = JSON.stringify(schema);
-    const credentialSubject = query.credentialSubject as JsonDocumentObject;
     const schemaId: string = await Path.getTypeIDFromContext(
       ldContextJSON,
       query.type || '',
@@ -456,11 +456,12 @@ export class PubSignalsVerifier {
     );
     const schemaHash = calculateCoreSchemaHash(byteEncoder.encode(schemaId));
 
-    const queriesMetadata = await parseQueriesMetadata(
+    const queriesMetadata = await parseProofQueryMetadata(
       query.type || '',
       ldContextJSON,
-      credentialSubject,
-      ldOpts
+      query,
+      ldOpts,
+      verifiablePresentation
     );
 
     const request: { queryHash: bigint; queryMeta: QueryMetadata }[] = [];
@@ -571,14 +572,15 @@ export class PubSignalsVerifier {
       throw new Error(`can't load schema for request query`);
     }
 
-    const queriesMetadata = await parseQueriesMetadata(
+    const queriesMetadata = await parseProofQueryMetadata(
       query.type,
       JSON.stringify(context),
-      query.credentialSubject as JsonDocumentObject,
+      query,
       {
         documentLoader: loader,
         legacyNoopOperator: true
-      }
+      },
+      verifiablePresentation
     );
 
     await checkQueryRequest(

@@ -297,17 +297,18 @@ export const StandardJSONCredentialsQueryFilter = (query: ProofQuery): FilterQue
         return acc.concat(
           new FilterQuery('credentialSchema.id', comparatorOptions.$eq, queryValue)
         );
-      case 'credentialSubject': {
+      case 'credentialSubject':
+      case 'credentialStatus': {
         const reqFilters = Object.keys(queryValue).reduce((acc: FilterQuery[], fieldKey) => {
           const fieldParams = queryValue[fieldKey];
           if (typeof fieldParams === 'object' && Object.keys(fieldParams).length === 0) {
             return acc.concat([
-              new FilterQuery(`credentialSubject.${fieldKey}`, comparatorOptions.$noop, null)
+              new FilterQuery(`${queryKey}.${fieldKey}`, comparatorOptions.$noop, null)
             ]);
           }
           const res = Object.keys(fieldParams).map((comparator) => {
             const value = fieldParams[comparator];
-            const path = `credentialSubject.${fieldKey}`;
+            const path = `${queryKey}.${fieldKey}`;
             return new FilterQuery(
               path,
               comparatorOptions[comparator as keyof typeof comparatorOptions],
@@ -318,6 +319,27 @@ export const StandardJSONCredentialsQueryFilter = (query: ProofQuery): FilterQue
         }, []);
 
         return acc.concat(reqFilters);
+      }
+      case 'expirationDate':
+      case 'issuanceDate': {
+        if (Object.keys(queryValue).length === 0) {
+          return acc.concat([new FilterQuery(queryKey, comparatorOptions.$noop, null)]);
+        }
+        const res = Object.keys(queryValue).map((comparator) => {
+          const rawValue = queryValue[comparator];
+          // Credentials store these fields as ISO strings; convert Unix-second timestamps so
+          // the date comparator (Date.parse) can handle both formats correctly.
+          const value =
+            typeof rawValue === 'number' || (typeof rawValue === 'string' && /^\d+$/.test(rawValue))
+              ? new Date(Number(rawValue) * 1000).toISOString()
+              : rawValue;
+          return new FilterQuery(
+            queryKey,
+            comparatorOptions[comparator as keyof typeof comparatorOptions],
+            value
+          );
+        });
+        return acc.concat(res);
       }
       case 'proofType':
       case 'groupId':

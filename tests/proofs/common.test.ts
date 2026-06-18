@@ -27,7 +27,7 @@ describe('parseQueryMetadata', () => {
 
     const { values: valuesFromSd } = await parseQueryMetadata(
       {
-        fieldName: 'documentType',
+        fieldName: 'credentialSubject.documentType',
         operator: 16,
         operatorValue: ''
       },
@@ -56,7 +56,7 @@ describe('parseQueryMetadata', () => {
     await expect(
       parseQueryMetadata(
         {
-          fieldName: 'documentType',
+          fieldName: 'credentialSubject.documentType',
           operator: 16,
           operatorValue: '123'
         },
