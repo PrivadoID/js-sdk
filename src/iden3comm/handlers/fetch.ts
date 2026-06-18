@@ -268,9 +268,11 @@ export class FetchHandler
         if (message.type !== PROTOCOL_MESSAGE_TYPE.CREDENTIAL_ISSUANCE_RESPONSE_MESSAGE_TYPE) {
           return message;
         }
-        credentials.push(
-          W3CCredential.fromJSON((message as CredentialIssuanceMessage).body.credential)
+        const fetchedCredential = W3CCredential.fromJSON(
+          (message as CredentialIssuanceMessage).body.credential
         );
+        await this.verifyFetchedCredentialProofs(fetchedCredential);
+        credentials.push(fetchedCredential);
       } catch (e: unknown) {
         throw new Error(
           `could not fetch protocol message for credential offer id: , ${
@@ -469,9 +471,28 @@ export class FetchHandler
       }
       credential = W3CCredential.fromJSON(credential);
     }
+    await this.verifyFetchedCredentialProofs(credential);
     await this.opts.credentialWallet.save(credential);
 
     return null;
+  }
+
+  private async verifyFetchedCredentialProofs(credential: W3CCredential): Promise<void> {
+    if (!this.opts?.didResolverUrl || !this.opts?.merklizeOptions) {
+      return;
+    }
+    const credStatusResolverRegistry =
+      this.opts.credentialWallet?.getCredentialStatusResolverRegistry();
+    if (!credStatusResolverRegistry) {
+      return;
+    }
+    const isValid = await credential.verifyProofs(this.opts.didResolverUrl, {
+      credStatusResolverRegistry,
+      merklizeOptions: this.opts.merklizeOptions
+    });
+    if (!isValid) {
+      throw new Error('credential proof verification failed');
+    }
   }
 
   /**
