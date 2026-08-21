@@ -625,3 +625,101 @@ describe('credential-wallet', () => {
     expect(cred[0].credentialSubject['date-time1']).to.be.equal('2025-04-09T15:48:08.800+02:00');
   });
 });
+
+
+describe.only('credential-wallet-operators', () => {
+  it('datetime-between', async () => {
+    const storage = {
+      credential: new CredentialStorage(new InMemoryDataSource<W3CCredential>())
+    } as unknown as IDataStorage;
+
+    const cred = W3CCredential.fromJSON( JSON.parse(`{
+    "id": "urn:uuid:79db702b-08ae-11f0-bf3e-0a58a9feac02",
+    "@context": [
+        "https://www.w3.org/2018/credentials/v1",
+        "https://schema.iden3.io/core/jsonld/iden3proofs.jsonld",
+        "ipfs://Qmb48rJ5SiQMLXjVkaLQB6fWbT7C8LK75MHsCoHv8GAc15"
+    ],
+    "type": [
+        "VerifiableCredential",
+        "operators"
+    ],
+    "credentialSubject": {
+        "boolean1": true,
+        "date-time1": "2025-03-27T00:00:00.000+02:00",
+        "id": "did:iden3:privado:main:2SahfWEAtkmt5P8Rjif4bUwKR1nx8aWbAnb4j2WeQE",
+        "integer1": 1,
+        "non-negative-integer1": "1",
+        "number1": 2.3,
+        "positive-integer1": "1",
+        "string1": "test",
+        "type": "operators"
+    },
+    "issuer": "did:iden3:polygon:amoy:xHV7UUYn7tx3KyzcyXTcnLjvAA9tJRVWCVGErQFRV",
+    "credentialSchema": {
+        "id": "ipfs://QmWDmZQrtvidcNK7d6rJwq7ZSi8SUygJaKepN7NhKtGryc",
+        "type": "JsonSchema2023"
+    },
+    "credentialStatus": {
+        "id": "https://rhs-staging.polygonid.me/node?state=9d918246529c325db5592a6b286fb667876e8e13164658eb803e8da41024bb13",
+        "revocationNonce": 1914156308,
+        "statusIssuer": {
+            "id": "https://issuer-node-core-api-testing.privado.id/v2/agent",
+            "revocationNonce": 1914156308,
+            "type": "Iden3commRevocationStatusV1.0"
+        },
+        "type": "Iden3ReverseSparseMerkleTreeProof"
+    },
+    "issuanceDate": "2025-03-24T12:49:51.0251603Z",
+    "proof": [
+        {
+            "issuerData": {
+                "id": "did:iden3:polygon:amoy:xHV7UUYn7tx3KyzcyXTcnLjvAA9tJRVWCVGErQFRV",
+                "state": {
+                    "claimsTreeRoot": "dd80f4cbef4290fdb5aa73ae95d9c65ea421b766a9d335ad1204255386851d1c",
+                    "value": "1d633c6d18e8101341f67da2d2e4448244d5e75f230080d8ae802781e8220d19",
+                    "rootOfRoots": "0000000000000000000000000000000000000000000000000000000000000000",
+                    "revocationTreeRoot": "0000000000000000000000000000000000000000000000000000000000000000"
+                },
+                "mtp": {
+                    "existence": true,
+                    "siblings": []
+                },
+                "authCoreClaim": "cca3371a6cb1b715004407e325bd993c000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f4223360d1687fa64ab33ee8ce4ed1c03cba411d6205e418b844be5cbe7be5041468649e0d60e2294f9f5e866b8670d198c0f3110b2f093317ba368e6264b91d0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+                "credentialStatus": {
+                    "id": "https://rhs-staging.polygonid.me/node?state=1d633c6d18e8101341f67da2d2e4448244d5e75f230080d8ae802781e8220d19",
+                    "revocationNonce": 0,
+                    "statusIssuer": {
+                        "id": "https://issuer-node-core-api-testing.privado.id/v2/agent",
+                        "revocationNonce": 0,
+                        "type": "Iden3commRevocationStatusV1.0"
+                    },
+                    "type": "Iden3ReverseSparseMerkleTreeProof"
+                }
+            },
+            "type": "BJJSignature2021",
+            "coreClaim": "637056ad190ec7df5fef1345fda35e1f2200000000000000000000000000000001a1209526ff82be3f4c1588e4ebfbc99ec4fefa2d771a81fddc3509436a0f0099a4fb9df56c5e91d077eb30717c6c720239f0c57b8c0e2b61885ac101fff424000000000000000000000000000000000000000000000000000000000000000014b5177200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "signature": "f7f1b7dbc6fbeefe68482da24d182171911fa6a28c752a21fd0ff96e17a7161e2bba9eb5046a7334a1418a21c945b4290e92eb07c9a9f478772af0ae9ac3fa04"
+        }
+    ]
+    }`));
+
+   await storage.credential.saveCredential(cred);
+   const list = await storage.credential.findCredentialsByQuery({
+        "allowedIssuers": [
+            "*"
+        ],
+        "context": "ipfs://Qmb48rJ5SiQMLXjVkaLQB6fWbT7C8LK75MHsCoHv8GAc15",
+        "credentialSubject": {
+            "date-time1": {
+                "$between": [
+                    "2022-11-15T12:28:35.100+01:00",
+                    "2026-11-15T12:28:35.100+01:00"
+                ]
+            }
+        },
+        "type": "operators"
+    })
+  expect( list.length).to.equal(1);
+  });
+});
