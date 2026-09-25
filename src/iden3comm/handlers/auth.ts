@@ -322,9 +322,10 @@ export class AuthHandler
         mediaType: MediaType.ZKPMessage
       };
     }
-
+    // override sender did if it's explicitly specified in the auth request
+    const to = authRequest.to ? DID.parse(authRequest.to) : did;
     const authResponse = await this.handleAuthRequest(authRequest, {
-      senderDid: did,
+      senderDid: to,
       mediaType: opts.mediaType,
       bypassProofsCache: opts.bypassProofsCache,
       allowExpiredCredentials: opts.allowExpiredCredentials
@@ -338,7 +339,7 @@ export class AuthHandler
         opts.preferredAuthProvingMethod,
         authRequest.body.accept
       ),
-      senderDID: did
+      senderDID: to
     });
     const token = byteDecoder.decode(
       await this._packerMgr.pack(opts.mediaType, msgBytes, packerOpts)
