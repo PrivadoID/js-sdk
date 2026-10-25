@@ -171,7 +171,8 @@ const betweenOperator = (
   if (!Array.isArray(b) || b.length !== 2) {
     throw new Error('$between/$nonbetween operator value should be 2 elements array');
   }
-
+  
+  // TODO: between operator is valid for RFC3339 dates and for YYYY-MM-DD dates, but b.map / or BigInt(a) fails for such strings. It must work
   const [min, max] = b.map(BigInt);
   const predicate = (val: bigint) => val >= min && val <= max;
 
