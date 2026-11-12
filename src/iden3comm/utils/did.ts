@@ -118,9 +118,18 @@ export const toPublicKeyJwk = (keyStr: string, keyType: KmsKeyType): JsonWebKey 
         ext: true
       };
     }
+
+    case KmsKeyType.X25519: {
+      return {
+        kty: 'OKP',
+        crv: 'X25519',
+        x: bytesToBase64url(hexToBytes(keyStr)),
+        alg: PROTOCOL_CONSTANTS.AcceptJweKEKAlgorithms.ECDH_ES_A256KW
+      };
+    }
     default:
       throw new Error(
-        `Unsupported key type: ${keyType}. Supported key types ${KmsKeyType.RsaOaep256}, ${KmsKeyType.P384}`
+        `Unsupported key type: ${keyType}. Supported key types ${KmsKeyType.RsaOaep256}, ${KmsKeyType.P384}, ${KmsKeyType.X25519}`
       );
   }
 };
