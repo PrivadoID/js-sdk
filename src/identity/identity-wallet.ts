@@ -107,6 +107,8 @@ export type EncryptionKeyOps = {
  *      txCallback - defines how the TransactionReceipt is handled
  *      publishMode  - specifies the work of transaction polling type: sync / async / callback
  *  genesisPublishingDisabled - genesis is publishing by default. Set `true` to prevent genesis publishing
+ * publicKey - BJJ public key of a key held outside of this wallet's KMS (e.g. on a delegate's device).
+ *  Only honored by `addBJJAuthCredential`; when set, `seed` is ignored and no key is created in the KMS
  */
 export type AuthBJJCredentialCreationOptions = {
   revocationOpts: {
@@ -120,6 +122,7 @@ export type AuthBJJCredentialCreationOptions = {
     };
   };
   seed?: Uint8Array;
+  publicKey?: PublicKey;
 };
 
 /**
@@ -593,6 +596,13 @@ export class IdentityWallet implements IIdentityWallet {
     const pubKeyHex = await this._kms.publicKey(keyId);
     const pubKey = PublicKey.newFromHex(pubKeyHex);
 
+    return this.createAuthCoreClaimFromPublicKey(revNonce, pubKey);
+  }
+
+  private createAuthCoreClaimFromPublicKey(
+    revNonce: number,
+    pubKey: PublicKey
+  ): { authClaim: Claim; pubKey: PublicKey } {
     const schemaHash = SchemaHash.authSchemaHash;
 
     const authClaim = Claim.newClaim(
@@ -1186,6 +1196,12 @@ export class IdentityWallet implements IIdentityWallet {
   }> {
     const authCredentials = await this._credentialWallet.getAllAuthBJJCredentials(did);
     for (let i = 0; i < authCredentials.length; i++) {
+      // an identity may have auth keys held by other wallets (e.g. delegates of an organization),
+      // only the ones this wallet can sign with are usable
+      if (!(await this.hasAuthKey(authCredentials[i]))) {
+        continue;
+      }
+
       const incProof = await this.generateCredentialMtp(did, authCredentials[i], treeStateInfo);
 
       if (!incProof.proof.existence) {
@@ -1208,6 +1224,15 @@ export class IdentityWallet implements IIdentityWallet {
     }
 
     throw new Error(VerifiableConstants.ERRORS.NO_AUTH_CRED_FOUND);
+  }
+
+  private async hasAuthKey(credential: W3CCredential): Promise<boolean> {
+    try {
+      await this._kms.publicKey(getKMSIdByAuthCredential(credential));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** {@inheritDoc IIdentityWallet.revokeCredential} */
@@ -1551,10 +1576,19 @@ export class IdentityWallet implements IIdentityWallet {
       nonce,
       seed,
       id,
-      type
-    }: { nonce: number; seed: Uint8Array; id: string; type: CredentialStatusType }
+      type,
+      publicKey
+    }: {
+      nonce: number;
+      seed: Uint8Array;
+      id: string;
+      type: CredentialStatusType;
+      publicKey?: PublicKey;
+    }
   ): Promise<W3CCredential> {
-    const { authClaim, pubKey } = await this.createAuthCoreClaim(nonce, seed);
+    const { authClaim, pubKey } = publicKey
+      ? this.createAuthCoreClaimFromPublicKey(nonce, publicKey)
+      : await this.createAuthCoreClaim(nonce, seed);
 
     const { hi, hv } = authClaim.hiHv();
     await this._storage.mt.addToMerkleTree(did.string(), MerkleTreeType.Claims, hi, hv);
@@ -1585,18 +1619,24 @@ export class IdentityWallet implements IIdentityWallet {
     opts: AuthBJJCredentialCreationOptions,
     prover?: IZKProver // it will be needed in case of non ethereum identities
   ): Promise<W3CCredential> {
-    opts.seed = opts.seed ?? getRandomBytes(32);
-    opts.revocationOpts.nonce =
+    // seed and nonce are not written back to `opts`: callers may reuse the same options object
+    // for several auth keys, which would then share the key or the revocation nonce
+    const seed = opts.seed ?? getRandomBytes(32);
+    // nonce 0 is only safe for the first auth key: a BJJ identity's genesis auth claim already
+    // uses it, and a shared nonce would make revoking one key revoke the other as well
+    const isFirstAuthKey =
+      isOldStateGenesis &&
+      (await this._credentialWallet.getAllAuthBJJCredentials(did)).length === 0;
+    const nonce =
       opts.revocationOpts.nonce ??
-      (isOldStateGenesis
-        ? 0
-        : opts.revocationOpts.nonce ?? new DataView(getRandomBytes(12).buffer).getUint32(0));
+      (isFirstAuthKey ? 0 : new DataView(getRandomBytes(12).buffer).getUint32(0));
 
     const credential = await this.getAuthBJJCredential(did, oldTreeState, {
-      nonce: opts.revocationOpts.nonce,
-      seed: opts.seed,
+      nonce,
+      seed,
       id: opts.revocationOpts.id,
-      type: opts.revocationOpts.type
+      type: opts.revocationOpts.type,
+      publicKey: opts.publicKey
     });
 
     const addMtpToCredAndPublishRevState = async () => {
@@ -1609,7 +1649,7 @@ export class IdentityWallet implements IIdentityWallet {
         block?.timestamp,
         undefined,
         {
-          revNonce: opts.revocationOpts.nonce ?? 0,
+          revNonce: nonce,
           subjectPosition: SubjectPosition.None,
           merklizedRootPosition: MerklizedRootPosition.None,
           updatable: false,

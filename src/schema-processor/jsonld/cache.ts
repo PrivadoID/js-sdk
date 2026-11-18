@@ -17,6 +17,9 @@ const docIden3DisplayMethod = JSON.parse(
   VerifiableConstants.JSONLD_SCHEMA.IDEN3_DISPLAY_METHOD_DEFINITION_DOCUMENT
 );
 const docIden3AuthBJJ = JSON.parse(VerifiableConstants.AUTH.AUTH_BJJ_CREDENTIAL_SCHEMA_JSONLD);
+const docIden3AuthBJJJsonSchema = JSON.parse(
+  VerifiableConstants.AUTH.AUTH_BJJ_CREDENTIAL_SCHEMA_JSON
+);
 
 export const cacheLoader = (opts?: Options): DocumentLoader => {
   const cache = new Map<string, RemoteDocument>();
@@ -35,6 +38,10 @@ export const cacheLoader = (opts?: Options): DocumentLoader => {
   cache.set(VerifiableConstants.AUTH.AUTH_BJJ_CREDENTIAL_SCHEMA_JSONLD_URL, {
     document: docIden3AuthBJJ,
     documentUrl: VerifiableConstants.AUTH.AUTH_BJJ_CREDENTIAL_SCHEMA_JSONLD
+  });
+  cache.set(VerifiableConstants.AUTH.AUTH_BJJ_CREDENTIAL_SCHEMA_JSON_URL, {
+    document: docIden3AuthBJJJsonSchema,
+    documentUrl: VerifiableConstants.AUTH.AUTH_BJJ_CREDENTIAL_SCHEMA_JSON_URL
   });
 
   return async (url: Url): Promise<RemoteDocument> => {
