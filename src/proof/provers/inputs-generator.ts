@@ -250,7 +250,7 @@ export class InputGenerator {
 
     let challenge = params.challenge ?? proofReq.params?.challenge;
 
-    if (!challenge) {
+    if (challenge === null || challenge === undefined) {
       throw new Error('challenge must be provided for auth circuit');
     }
 
@@ -324,7 +324,7 @@ export class InputGenerator {
     circuitInputs.authClaim = authClaimData.claim;
     circuitInputs.authClaimIncMtp = authClaimData.proof;
     circuitInputs.authClaimNonRevMtp = authInfo.nonRevProof.proof;
-    if (!params.challenge) {
+    if (params.challenge === null || params.challenge === undefined) {
       throw new Error('challenge must be provided for onchain circuits');
     }
     const signature = await this._identityWallet.signChallenge(
@@ -440,7 +440,7 @@ export class InputGenerator {
     circuitInputs.authClaimIncMtp = authClaimData.proof;
     circuitInputs.authClaimNonRevMtp = authInfo.nonRevProof.proof;
 
-    if (!params.challenge) {
+    if (params.challenge === null || params.challenge === undefined) {
       throw new Error('challenge must be provided for onchain circuits');
     }
 
