@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildDIDFromEthAddress,
+  calculateMultiRequestId,
   buildDIDFromEthPubKey,
   CACHE_KEY_VERSION,
   CircuitId,
@@ -280,5 +281,25 @@ describe('createZkpRequestCacheKey', () => {
     const key2 = createZkpRequestCacheKey(CACHE_KEY_VERSION.V1, profileDID, r2, credId);
 
     expect(key1).not.to.equal(key2);
+  });
+});
+
+describe('calculateMultiRequestId', () => {
+  const creator = '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266';
+
+  it('matches the Verifier contract abi.encode hash', () => {
+    expect(calculateMultiRequestId([1n, 2n], [3n], creator)).toBe(
+      66503760665935913562240386324712378963640632111451708259404193967361426232039n
+    );
+    expect(calculateMultiRequestId([1n], [2n, 3n], creator)).toBe(
+      91988463783048594944755115311468848995689516967739366854287315972498619061768n
+    );
+  });
+
+  it('different requestIds/groupIds splits give different ids', () => {
+    // With abi.encodePacked both splits packed to the same bytes and collided.
+    expect(calculateMultiRequestId([1n, 2n], [3n], creator)).not.toBe(
+      calculateMultiRequestId([1n], [2n, 3n], creator)
+    );
   });
 });

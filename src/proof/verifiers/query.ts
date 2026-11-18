@@ -349,9 +349,11 @@ export function calculateMultiRequestId(
   groupIds: bigint[],
   creatorAddress: string
 ): bigint {
+  // abi.encode (not abi.encodePacked): packing two dynamic arrays is ambiguous,
+  // e.g. ([1, 2], [3]) and ([1], [2, 3]) would produce the same id.
   return BigInt(
     ethers.keccak256(
-      ethers.solidityPacked(
+      ethers.AbiCoder.defaultAbiCoder().encode(
         ['uint256[]', 'uint256[]', 'address'],
         [requestIds, groupIds, creatorAddress]
       )
