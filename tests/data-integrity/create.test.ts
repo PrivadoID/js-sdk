@@ -5,6 +5,7 @@ import { DID } from '@iden3/js-iden3-core';
 import { proving } from '@iden3/js-jwz';
 import { base64url } from 'rfc4648';
 import {
+  CreateIden3JwzProofOptions,
   IPackageManager,
   JsonDocumentObject,
   createIden3JwzProof,
@@ -29,6 +30,14 @@ const packerReturning = (compact: string) => {
   const pack = vi.fn(async () => new TextEncoder().encode(compact));
   return { pack, manager: { pack } as unknown as IPackageManager };
 };
+const proofOptionsWith = (packageManager: IPackageManager): CreateIden3JwzProofOptions => ({
+  signer,
+  created,
+  expires,
+  packageManager,
+  documentLoader: loader,
+  allowUnsignedEmptyArrays: true
+});
 
 describe('iden3-jwz-rdfc-2026 proof creation (C.4)', () => {
   it('builds the proof options of C.1', () => {
@@ -49,14 +58,7 @@ describe('iden3-jwz-rdfc-2026 proof creation (C.4)', () => {
 
   it('proves the payload with the authV3-8-32 ZKP packer and gives the proof', async () => {
     const { pack, manager } = packerReturning(genuineCompact);
-    const proof = await createIden3JwzProof(genuineDocument, {
-      signer,
-      created,
-      expires,
-      packageManager: manager,
-      documentLoader: loader,
-      allowUnsignedEmptyArrays: true
-    });
+    const proof = await createIden3JwzProof(genuineDocument, proofOptionsWith(manager));
     expect(proof).toEqual(genuineProof);
     expect(pack).toHaveBeenCalledOnce();
     const [mediaType, payloadBytes, params] = pack.mock.calls[0] as unknown as [
@@ -83,15 +85,8 @@ describe('iden3-jwz-rdfc-2026 proof creation (C.4)', () => {
       { pad: false }
     );
     const { manager } = packerReturning([header, payload, zkp].join('.'));
-    await expect(
-      createIden3JwzProof(genuineDocument, {
-        signer,
-        created,
-        expires,
-        packageManager: manager,
-        documentLoader: loader,
-        allowUnsignedEmptyArrays: true
-      })
-    ).rejects.toThrow('header');
+    await expect(createIden3JwzProof(genuineDocument, proofOptionsWith(manager))).rejects.toThrow(
+      'header'
+    );
   });
 });

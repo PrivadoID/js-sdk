@@ -214,6 +214,19 @@ describe('iden3-jwz-rdfc-2026 verification edges', () => {
     ).rejects.toMatchObject({ reason: 'proof_expired' });
   });
 
+  it('gives precheck the document without proof and the proof configuration', async () => {
+    const calls: JsonDocumentObject[][] = [];
+    const record = (unsecured: JsonDocumentObject, proofConfiguration: JsonDocumentObject) => {
+      calls.push([unsecured, proofConfiguration]);
+    };
+    await verifyIden3JwzProof(genuineCase.document, optionsFor(genuineCase, { precheck: record }));
+    const { proof, ...unsecured } = genuineCase.document;
+    const proofOptions = Object.fromEntries(
+      Object.entries(proof as JsonDocumentObject).filter(([member]) => member !== 'proofValue')
+    );
+    expect(calls).toEqual([[unsecured, { ...proofOptions, '@context': unsecured['@context'] }]]);
+  });
+
   it('rejects without a verification key for the circuit', async () => {
     await expect(
       verifyIden3JwzProof(genuineCase.document, optionsFor(genuineCase, { verificationKeys: {} }))

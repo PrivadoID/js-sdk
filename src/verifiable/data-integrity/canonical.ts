@@ -8,6 +8,8 @@ import { isKeyword, isRelativeIri, isURL } from './iri';
 
 const MAX_IRI_LENGTH = 2083;
 const MAX_DEEP_ITERATIONS = 1;
+const MAX_BLANK_NODES = 256;
+const MAX_VALUES = 4096;
 const CONTEXT_KEY = '@context';
 
 export class JsonLdCanonicalizationError extends Error {
@@ -122,6 +124,47 @@ const requireAbsoluteIRIs = (expanded: unknown): void => {
   }
 };
 
+type WorkCount = { blankNodes: number; values: number };
+
+const isBlankNode = (node: Record<string, unknown>): boolean => {
+  const id = node['@id'];
+  return typeof id !== 'string' || id.startsWith('_:');
+};
+
+const countWork = (expanded: unknown, count: WorkCount): void => {
+  if (Array.isArray(expanded)) {
+    count.values += expanded.length;
+    expanded.forEach((item) => countWork(item, count));
+    return;
+  }
+  if (typeof expanded !== 'object' || expanded === null || '@value' in expanded) {
+    return;
+  }
+  const node = expanded as Record<string, unknown>;
+  const list = node['@list'];
+  if (Array.isArray(list)) {
+    count.blankNodes += list.length;
+  } else if (isBlankNode(node)) {
+    count.blankNodes += 1;
+  }
+  Object.values(node).forEach((member) => countWork(member, count));
+};
+
+const requireBoundedWork = (expanded: unknown): void => {
+  const count: WorkCount = { blankNodes: 0, values: 0 };
+  countWork(expanded, count);
+  if (count.blankNodes > MAX_BLANK_NODES) {
+    throw new JsonLdCanonicalizationError(
+      `the document has ${count.blankNodes} blank nodes, more than ${MAX_BLANK_NODES}`
+    );
+  }
+  if (count.values > MAX_VALUES) {
+    throw new JsonLdCanonicalizationError(
+      `the document has ${count.values} values, more than ${MAX_VALUES}`
+    );
+  }
+};
+
 const wrapJsonLdError = (err: unknown): JsonLdCanonicalizationError =>
   err instanceof JsonLdCanonicalizationError
     ? err
@@ -188,15 +231,16 @@ export const canonicalizeStrict = async (
   documentLoader: DocumentLoader,
   options: CanonicalizeStrictOptions = {}
 ): Promise<string> => {
-  const copy = plainCopy(input);
-  requireNoNull(copy, undefined);
-  requireContextUrls(copy);
   try {
+    const copy = plainCopy(input);
+    requireNoNull(copy, undefined);
+    requireContextUrls(copy);
     const expanded = await jsonld.expand(copy, {
       safe: true,
       documentLoader: toJsonLdLoader(documentLoader)
     } as Options.Expand);
     requireAbsoluteIRIs(expanded);
+    requireBoundedWork(expanded);
     if (
       !options.allowUnsignedEmptyArrays &&
       countEmptyArrays(copy) !== countSignedEmptyArrays(expanded)
@@ -211,13 +255,18 @@ export const canonicalizeStrict = async (
 
 const sha256OfText = (text: string): Uint8Array => sha256(new TextEncoder().encode(text));
 
+export type Iden3JwzPayloadOptions = {
+  documentLoader: DocumentLoader;
+  allowUnsignedEmptyArrays?: boolean;
+};
+
 export const computeIden3JwzPayload = async (
   document: JsonDocumentObject,
   proofOptions: JsonDocumentObject,
-  options: { documentLoader: DocumentLoader; allowUnsignedEmptyArrays?: boolean }
+  options: Iden3JwzPayloadOptions
 ): Promise<string> => {
   if ('proof' in document) {
-    throw new Error('the document must not hold a proof member');
+    throw new JsonLdCanonicalizationError('the document must not hold a proof member');
   }
   if (!(CONTEXT_KEY in document)) {
     throw new JsonLdCanonicalizationError('the document has no @context');

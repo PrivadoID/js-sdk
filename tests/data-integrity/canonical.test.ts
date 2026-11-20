@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { base64url } from 'rfc4648';
 import {
+  Iden3JwzPayloadOptions,
   JsonDocumentObject,
   JsonLdCanonicalizationError,
   canonicalizeStrict,
@@ -137,6 +138,34 @@ describe('strict canonicalization (C.3 step 3)', () => {
     await expect(canonicalizeStrict(clique, local)).rejects.toThrow('Maximum deep iterations');
     expect(Date.now() - started).toBeLessThan(1000);
   });
+
+  it('refuses a list of 4000 equal items quickly', async () => {
+    const started = performance.now();
+    await expect(
+      canonicalizeStrict({ ...LOCAL, s: Array.from({ length: 4000 }, () => 'x') }, local)
+    ).rejects.toThrow('blank nodes');
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+
+  it('refuses a property with 20000 values quickly', async () => {
+    const started = performance.now();
+    await expect(
+      canonicalizeStrict({ ...LOCAL, b: Array.from({ length: 20000 }, (_, i) => `v${i}`) }, local)
+    ).rejects.toThrow('values');
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+
+  it('accepts 1000 nodes with an empty list each within one second', async () => {
+    const nodes = Array.from({ length: 1000 }, (_, i) => ({
+      '@id': `https://example.org/n${i}`,
+      s: []
+    }));
+    const started = performance.now();
+    await expect(canonicalizeStrict({ ...LOCAL, b: nodes }, local)).resolves.toContain(
+      '<https://example.org/n999> <https://example.org/s>'
+    );
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
 });
 
 describe('JWZ payload (C.3)', () => {
@@ -169,5 +198,59 @@ describe('JWZ payload (C.3)', () => {
     await expect(
       computeIden3JwzPayload(genuine.didDocument, options, { documentLoader: loader })
     ).rejects.toThrow('proof');
+  });
+
+  it('refuses a document that holds a proof, and a BigInt member, with a JsonLdCanonicalizationError', async () => {
+    const { document, options } = split(genuine.didDocument);
+    await expect(
+      computeIden3JwzPayload(genuine.didDocument, options, { documentLoader: loader })
+    ).rejects.toBeInstanceOf(JsonLdCanonicalizationError);
+    await expect(
+      computeIden3JwzPayload({ ...document, extra: 1n } as unknown as JsonDocumentObject, options, {
+        documentLoader: loader
+      })
+    ).rejects.toBeInstanceOf(JsonLdCanonicalizationError);
+  });
+
+  it('gives the JWZ payload of a DID document with GIST siblings and a node_aux', async () => {
+    const siblings = [
+      '7210171262987616307163768372431818245390547658390117213620226932618196931286',
+      '0',
+      '14918394740106532006282734095416718930012538405651722917215014283357233386405'
+    ];
+    const { document, options } = split(genuine.didDocument);
+    const [stateInfo, ...methods] = document.verificationMethod as JsonDocumentObject[];
+    const global = stateInfo.global as JsonDocumentObject;
+    const gistDocument = {
+      ...document,
+      verificationMethod: [
+        {
+          ...stateInfo,
+          global: {
+            ...global,
+            proof: {
+              existence: false,
+              node_aux: {
+                key: '24846663430375341177084327381366271031641225773947711007341346118923321345',
+                value:
+                  '6317996369756476782464660724028085001790405126656012993591099574640713781089'
+              },
+              siblings,
+              type: 'Iden3SparseMerkleTreeProof'
+            }
+          }
+        },
+        ...methods
+      ]
+    };
+    const payloadOptions: Iden3JwzPayloadOptions = {
+      documentLoader: loader,
+      allowUnsignedEmptyArrays: true
+    };
+    expect(await computeIden3JwzPayload(gistDocument, options, payloadOptions)).toHaveLength(86);
+    const canonicalForm = await canonicalizeStrict(gistDocument, loader, payloadOptions);
+    for (const sibling of siblings) {
+      expect(canonicalForm).toContain(`"${sibling}"`);
+    }
   });
 });

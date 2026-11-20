@@ -45,16 +45,18 @@ export const proofValueFromCompactJwz = (compactJwz: string): string =>
     pad: false
   })}`;
 
+export type CreateIden3JwzProofOptions = {
+  signer: DID;
+  created: Date;
+  expires: Date;
+  packageManager: IPackageManager;
+  documentLoader: DocumentLoader;
+  allowUnsignedEmptyArrays?: boolean;
+};
+
 export const createIden3JwzProof = async (
   document: JsonDocumentObject,
-  options: {
-    signer: DID;
-    created: Date;
-    expires: Date;
-    packageManager: IPackageManager;
-    documentLoader: DocumentLoader;
-    allowUnsignedEmptyArrays?: boolean;
-  }
+  options: CreateIden3JwzProofOptions
 ): Promise<Iden3JwzProof> => {
   const proofOptions = iden3JwzProofOptions(options.signer, options.created, options.expires);
   const payload = await computeIden3JwzPayload(document, proofOptions, {

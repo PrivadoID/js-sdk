@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import * as sdk from '../../src';
 import {
   IDEN3_JWZ_CIRCUIT_HEADERS,
+  IDEN3_JWZ_PROOF_MEMBERS,
   IDEN3_JWZ_PROOF_REASONS,
   Iden3JwzProofRejection,
   createStrictDocumentLoader,
@@ -34,6 +36,16 @@ describe('iden3-jwz-rdfc-2026 foundation', () => {
     expect(rejection).toBeInstanceOf(Error);
     expect(rejection.reason).toBe('proof_expired');
     expect(rejection.message).toBe('the proof has expired (proof_expired)');
+  });
+
+  it('freezes the circuit headers, the proof members and the reasons', () => {
+    expect(Object.isFrozen(IDEN3_JWZ_CIRCUIT_HEADERS)).toBe(true);
+    expect(Object.isFrozen(IDEN3_JWZ_PROOF_MEMBERS)).toBe(true);
+    expect(Object.isFrozen(IDEN3_JWZ_PROOF_REASONS)).toBe(true);
+  });
+
+  it('does not export parseStrictJsonObject from the package root', () => {
+    expect(sdk).not.toHaveProperty('parseStrictJsonObject');
   });
 
   it('reads and writes only whole UTC seconds', () => {

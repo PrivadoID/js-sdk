@@ -4,15 +4,15 @@ export const IDEN3_JWZ_PROOF_PURPOSE = 'assertionMethod';
 export const IDEN3_JWZ_STATE_INFO_FRAGMENT = '#state-info';
 export const IDEN3_JWZ_PROOF_VALUE_PREFIX = 'u';
 
-export const IDEN3_JWZ_CIRCUIT_HEADERS: Readonly<Record<string, string>> = {
+export const IDEN3_JWZ_CIRCUIT_HEADERS: Readonly<Record<string, string>> = Object.freeze({
   'authV3-8-32':
     '{"alg":"groth16","circuitId":"authV3-8-32","crit":["circuitId"],"typ":"application/iden3-zkp-json"}'
-};
+});
 
 export const IDEN3_JWZ_MAX_CREATED_AHEAD_SECONDS = 300;
 export const IDEN3_JWZ_MAX_ROOT_REPLACED_BEFORE_CREATED_SECONDS = 300;
 
-export const IDEN3_JWZ_PROOF_MEMBERS = [
+export const IDEN3_JWZ_PROOF_MEMBERS = Object.freeze([
   'type',
   'cryptosuite',
   'created',
@@ -20,7 +20,7 @@ export const IDEN3_JWZ_PROOF_MEMBERS = [
   'verificationMethod',
   'proofPurpose',
   'proofValue'
-] as const;
+] as const);
 
 export type Iden3JwzProofOptions = {
   type: typeof DATA_INTEGRITY_PROOF_TYPE;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseStrictJsonObject } from '../../src';
+import { parseStrictJsonObject } from '../../src/verifiable/data-integrity/strict-json';
 
 const bytesOf = (text: string): Uint8Array => new TextEncoder().encode(text);
 

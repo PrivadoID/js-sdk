@@ -1,4 +1,4 @@
-export const IDEN3_JWZ_PROOF_REASONS = [
+export const IDEN3_JWZ_PROOF_REASONS = Object.freeze([
   'proof_malformed',
   'proof_expired',
   'document_malformed',
@@ -7,7 +7,7 @@ export const IDEN3_JWZ_PROOF_REASONS = [
   'proof_signer_mismatch',
   'state_superseded',
   'state_unavailable'
-] as const;
+] as const);
 
 export type Iden3JwzProofReason = (typeof IDEN3_JWZ_PROOF_REASONS)[number];
 
