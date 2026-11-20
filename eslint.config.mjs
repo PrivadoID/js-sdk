@@ -38,8 +38,6 @@ export default [
               'cryptosuite',
               'rdfc',
               'URDNA',
-              'jwzsuite',
-              'precheck',
               'unmarshal',
               'JUvpllMEYUZ2joO59UNui_XYDqxVqiFLLAJ8klWuPBw',
               'gdwj',
