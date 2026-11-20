@@ -5,6 +5,7 @@ import { DEFAULT_AUTH_VERIFY_DELAY, MediaType } from '../../iden3comm/constants'
 import { base64UrlToBytes, byteDecoder, byteEncoder, bytesToBase64url } from '../../utils';
 import { DATA_INTEGRITY_PROOF_TYPE, IDEN3_JWZ_RDFC_2026 } from './constants';
 import { computeIden3JwzPayload } from './canonical';
+import { proofValueFromCompactJwz } from './create';
 
 export type VerifyIden3JwzProofOptions = {
   signer: string;
@@ -54,6 +55,9 @@ export const verifyIden3JwzProof = async (
   requireMember(proof, 'verificationMethod', `${signer}#state-info`);
   const created = requireDate(proof, 'created');
   const expires = requireDate(proof, 'expires');
+  if (!(expires.getTime() > created.getTime())) {
+    throw new Error('the proof expires must be later than created');
+  }
   if (!(expires.getTime() - created.getTime() <= maxProofLifetime)) {
     throw new Error('the proof lifetime is longer than maxProofLifetime');
   }
@@ -69,6 +73,9 @@ export const verifyIden3JwzProof = async (
   }
   const compactJwz = byteDecoder.decode(base64UrlToBytes(proofValue.slice(1)));
   const token = await Token.parse(compactJwz);
+  if (proofValueFromCompactJwz(compactJwz) !== proofValue) {
+    throw new Error('the proofValue is not canonical');
+  }
   const payload = await computeIden3JwzPayload(document, proof, documentLoader);
   const [header, payloadSegment] = compactJwz.split('.');
   if (payload !== token.getPayload()) {

@@ -6,7 +6,6 @@ import {
   CredentialStatusResolverRegistry,
   CredentialStatusType,
   CredentialWallet,
-  ErrStateVerificationFailed,
   FSCircuitStorage,
   IPackageManager,
   IStateStorage,
@@ -171,6 +170,30 @@ describe('iden3-jwz-rdfc-2026', () => {
     );
   });
 
+  it('refuses a changed created or expires', async () => {
+    const withDate = (name: string, value: Date): JsonDocumentObject => ({
+      ...secured,
+      proof: { ...proofOf(secured), [name]: value.toISOString().replace('.000Z', 'Z') }
+    });
+    const earlierExpires = new Date(expires.getTime() - 24 * 60 * MINUTE);
+    const earlierCreated = new Date(created.getTime() - MINUTE);
+    await expect(verify(withDate('expires', earlierExpires))).rejects.toThrow('payload');
+    await expect(
+      verify(withDate('created', earlierCreated), { maxProofLifetime: LIFETIME + MINUTE })
+    ).rejects.toThrow('payload');
+  });
+
+  it('refuses expires that is not later than created in the proof', async () => {
+    const proof = { ...proofOf(secured), expires: proofOf(secured).created };
+    await expect(verify({ ...secured, proof })).rejects.toThrow('expires must be later');
+  });
+
+  it('refuses a proofValue with padding', async () => {
+    const proofValue = proofOf(secured).proofValue as string;
+    await expect(verify(withProofValue(`${proofValue}=`))).rejects.toThrow('not canonical');
+    await expect(verify(withProofValue(`${proofValue}==`))).rejects.toThrow('not canonical');
+  });
+
   it('refuses a proof after expires', async () => {
     await expect(verify(secured, { now: new Date(expires.getTime() + 1000) })).rejects.toThrow(
       'expired'
@@ -237,7 +260,7 @@ describe('iden3-jwz-rdfc-2026', () => {
       replacedRootStorage(new Date(created.getTime() - 6 * MINUTE))
     );
     await expect(verify(secured, { packageManager: refusing })).rejects.toThrow(
-      ErrStateVerificationFailed
+      'global state is outdated'
     );
   });
 

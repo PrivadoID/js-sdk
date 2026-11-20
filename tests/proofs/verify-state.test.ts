@@ -58,6 +58,16 @@ describe('verifyState with a replaced GIST root', () => {
     ).rejects.toThrow('global state is outdated');
   });
 
+  it('refuses a replaced root when referenceTime is not a valid date', async () => {
+    const proofService = createProofService({ replacedAtTimestamp: 1n });
+    await expect(
+      proofService.verifyState(CircuitId.AuthV2, pubSignals, {
+        ...opts,
+        referenceTime: new Date('not a date')
+      })
+    ).rejects.toThrow('global state is outdated');
+  });
+
   describe('without a reference time', () => {
     afterEach(() => {
       vi.restoreAllMocks();
