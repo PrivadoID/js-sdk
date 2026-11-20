@@ -1,5 +1,5 @@
 import { base64url } from 'rfc4648';
-import { byteDecoder } from '../../utils';
+import { byteDecoder, byteEncoder } from '../../utils';
 import {
   DATA_INTEGRITY_PROOF_TYPE,
   IDEN3_JWZ_CIRCUIT_HEADERS,
@@ -25,6 +25,9 @@ const BASE64URL_ALPHABET = /^[A-Za-z0-9_-]*$/;
 
 export const malformed = (detail: string): Iden3JwzProofRejection =>
   new Iden3JwzProofRejection('proof_malformed', detail);
+
+export const equalBytes = (left: Uint8Array, right: Uint8Array): boolean =>
+  left.length === right.length && left.every((byte, index) => byte === right[index]);
 
 export const checkProofShape = (proof: Record<string, unknown>, signer: string): void => {
   for (const member of IDEN3_JWZ_PROOF_MEMBERS) {
@@ -114,9 +117,8 @@ export const decodeProofValue = (
 };
 
 export const circuitIdOfHeader = (segment: Uint8Array): string => {
-  const header = byteDecoder.decode(segment);
-  const circuitId = Object.keys(IDEN3_JWZ_CIRCUIT_HEADERS).find(
-    (id) => IDEN3_JWZ_CIRCUIT_HEADERS[id] === header
+  const circuitId = Object.keys(IDEN3_JWZ_CIRCUIT_HEADERS).find((id) =>
+    equalBytes(segment, byteEncoder.encode(IDEN3_JWZ_CIRCUIT_HEADERS[id]))
   );
   if (circuitId === undefined) {
     throw malformed('the JWZ header is not exactly the header of an allowed circuit');

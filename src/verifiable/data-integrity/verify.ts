@@ -6,7 +6,7 @@ import { JsonDocumentObject } from '../../iden3comm';
 import { isRootDoesNotExistError } from '../../storage/blockchain/errors';
 import { RootInfo } from '../../storage/entities/state';
 import { IStateStorage } from '../../storage/interfaces/state';
-import { byteDecoder, byteEncoder } from '../../utils';
+import { byteEncoder } from '../../utils';
 import { VerifiableConstants } from '../constants';
 import { IDEN3_JWZ_MAX_ROOT_REPLACED_BEFORE_CREATED_SECONDS, ProofLifetime } from './constants';
 import { Iden3JwzProofRejection } from './rejection';
@@ -17,6 +17,7 @@ import {
   checkZkProofForm,
   circuitIdOfHeader,
   decodeProofValue,
+  equalBytes,
   malformed
 } from './proof-form';
 
@@ -37,7 +38,39 @@ export type VerifyIden3JwzProofOptions = {
   ) => void | Promise<void>;
 };
 
-const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+const errorText = (err: unknown): string => {
+  if (err instanceof Error) {
+    return err.message;
+  }
+  try {
+    return String(err);
+  } catch {
+    return 'an error without text';
+  }
+};
+
+const checkVerificationInputs = ({ now, lifetime }: VerifyIden3JwzProofOptions): void => {
+  if (!Number.isFinite(now.getTime())) {
+    throw new TypeError('now must be a valid date');
+  }
+  const { minSeconds, maxSeconds } = lifetime;
+  if (!Number.isFinite(minSeconds) || !Number.isFinite(maxSeconds) || minSeconds > maxSeconds) {
+    throw new TypeError(
+      'lifetime must have finite minSeconds and maxSeconds, with minSeconds <= maxSeconds'
+    );
+  }
+};
+
+const isRootMissingError = (err: unknown): boolean => {
+  if (errorText(err).includes(VerifiableConstants.ERRORS.ROOT_DOES_NOT_EXIST)) {
+    return true;
+  }
+  try {
+    return isRootDoesNotExistError(err);
+  } catch {
+    return false;
+  }
+};
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -107,10 +140,7 @@ const checkGistRoot = async (
     info = await options.gistRootReader.getGISTRootInfo(root, signals.userID.bigInt());
   } catch (err) {
     const text = errorText(err);
-    if (
-      isRootDoesNotExistError(err) ||
-      text.includes(VerifiableConstants.ERRORS.ROOT_DOES_NOT_EXIST)
-    ) {
+    if (isRootMissingError(err)) {
       throw new Iden3JwzProofRejection('proof_invalid', `the GIST root is not known: ${text}`);
     }
     throw new Iden3JwzProofRejection('state_unavailable', `the State cannot be read: ${text}`);
@@ -138,6 +168,7 @@ export const verifyIden3JwzProof = async (
   secured: JsonDocumentObject,
   options: VerifyIden3JwzProofOptions
 ): Promise<{ created: Date; expires: Date }> => {
+  checkVerificationInputs(options);
   const now = Math.floor(options.now.getTime() / 1000);
   const proof = Object.hasOwn(secured, 'proof') ? secured.proof : undefined;
   if (!isPlainObject(proof)) {
@@ -163,7 +194,7 @@ export const verifyIden3JwzProof = async (
       `the document cannot be canonicalized: ${errorText(err)}`
     );
   }
-  if (byteDecoder.decode(segments[1]) !== payload) {
+  if (!equalBytes(segments[1], byteEncoder.encode(payload))) {
     throw new Iden3JwzProofRejection(
       'proof_hash_mismatch',
       'the JWZ payload is not the hash of this document and its proof options'

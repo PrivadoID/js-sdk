@@ -54,20 +54,35 @@ const optionsFor = (
   ...extra
 });
 const iso = (date: Date) => date.toISOString().replace('.000Z', 'Z');
-const withZkpSegment = (secured: JsonDocumentObject, zkpText: string): JsonDocumentObject => {
-  const proof = secured.proof as Record<string, string>;
-  const [header, payload] = new TextDecoder()
-    .decode(base64url.parse(proof.proofValue.slice(1), { loose: true }))
+const jwzSegmentsOf = (secured: JsonDocumentObject): string[] =>
+  new TextDecoder()
+    .decode(
+      base64url.parse((secured.proof as Record<string, string>).proofValue.slice(1), {
+        loose: true
+      })
+    )
     .split('.');
-  const zkp = base64url.stringify(new TextEncoder().encode(zkpText), { pad: false });
-  const compact = [header, payload, zkp].join('.');
+const withJwzSegment = (
+  secured: JsonDocumentObject,
+  index: number,
+  segment: Uint8Array
+): JsonDocumentObject => {
+  const segments = jwzSegmentsOf(secured);
+  segments[index] = base64url.stringify(segment, { pad: false });
+  const compact = new TextEncoder().encode(segments.join('.'));
   return {
     ...secured,
     proof: {
-      ...proof,
-      proofValue: 'u' + base64url.stringify(new TextEncoder().encode(compact), { pad: false })
+      ...(secured.proof as Record<string, string>),
+      proofValue: 'u' + base64url.stringify(compact, { pad: false })
     }
   };
+};
+const withZkpSegment = (secured: JsonDocumentObject, zkpText: string): JsonDocumentObject =>
+  withJwzSegment(secured, 2, new TextEncoder().encode(zkpText));
+const withByteOrderMark = (secured: JsonDocumentObject, index: number): JsonDocumentObject => {
+  const segment = base64url.parse(jwzSegmentsOf(secured)[index], { loose: true });
+  return withJwzSegment(secured, index, new Uint8Array([0xef, 0xbb, 0xbf, ...segment]));
 };
 
 describe('iden3-jwz-rdfc-2026 vectors (C.7)', () => {
@@ -143,6 +158,44 @@ describe('iden3-jwz-rdfc-2026 verification edges', () => {
         optionsFor(genuineCase, { gistRootReader: timeout })
       )
     ).rejects.toMatchObject({ reason: 'state_unavailable' });
+  });
+
+  it('sorts a revert with a bigint in errorArgs as state_unavailable', async () => {
+    const revert = {
+      getGISTRootInfo: async () => {
+        throw Object.assign(new Error('execution reverted'), { errorArgs: [1n] });
+      }
+    };
+    await expect(
+      verifyIden3JwzProof(genuineCase.document, optionsFor(genuineCase, { gistRootReader: revert }))
+    ).rejects.toMatchObject({ reason: 'state_unavailable' });
+  });
+
+  it('refuses a header segment that starts with a byte order mark', async () => {
+    await expect(
+      verifyIden3JwzProof(withByteOrderMark(genuineCase.document, 0), optionsFor(genuineCase))
+    ).rejects.toMatchObject({ reason: 'proof_malformed' });
+  });
+
+  it('refuses a payload segment that starts with a byte order mark', async () => {
+    await expect(
+      verifyIden3JwzProof(withByteOrderMark(genuineCase.document, 1), optionsFor(genuineCase))
+    ).rejects.toMatchObject({ reason: 'proof_hash_mismatch' });
+  });
+
+  it('refuses an invalid now and an invalid lifetime with a TypeError', async () => {
+    const invalidOptions: Partial<VerifyIden3JwzProofOptions>[] = [
+      { now: new Date(NaN) },
+      { lifetime: { minSeconds: NaN, maxSeconds: lifetime.maxSeconds } },
+      { lifetime: { minSeconds: lifetime.minSeconds, maxSeconds: NaN } },
+      { lifetime: { minSeconds: lifetime.minSeconds, maxSeconds: Infinity } },
+      { lifetime: { minSeconds: lifetime.maxSeconds, maxSeconds: lifetime.minSeconds } }
+    ];
+    for (const extra of invalidOptions) {
+      await expect(
+        verifyIden3JwzProof(genuineCase.document, optionsFor(genuineCase, extra))
+      ).rejects.toThrow(TypeError);
+    }
   });
 
   it('runs precheck at step 5, after the date checks', async () => {
