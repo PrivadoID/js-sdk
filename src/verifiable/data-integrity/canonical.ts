@@ -5,7 +5,7 @@ import { JsonDocumentObject } from '../../iden3comm';
 import { cacheLoader } from '../../schema-processor';
 import { byteEncoder, bytesToBase64url } from '../../utils';
 
-const canonize = async (input: JsonDocumentObject, documentLoader: DocumentLoader) => {
+const hashCanonical = async (input: JsonDocumentObject, documentLoader: DocumentLoader) => {
   const canonical = await jsonld.canonize(input, {
     algorithm: 'URDNA2015',
     format: 'application/n-quads',
@@ -31,10 +31,10 @@ export const computeIden3JwzPayload = async (
   }
   const options = { ...proofOptions };
   delete options.proofValue;
-  const configuration = await canonize(
+  const configurationHash = await hashCanonical(
     { ...options, '@context': document['@context'] },
     documentLoader
   );
-  const hash = await canonize(document, documentLoader);
-  return bytesToBase64url(new Uint8Array([...configuration, ...hash]));
+  const documentHash = await hashCanonical(document, documentLoader);
+  return bytesToBase64url(new Uint8Array([...configurationHash, ...documentHash]));
 };

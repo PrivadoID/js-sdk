@@ -1,7 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import path from 'node:path';
 import { DID } from '@iden3/js-iden3-core';
-import { base64url } from 'rfc4648';
 import {
   CircuitId,
   CredentialStatusResolverRegistry,
@@ -16,8 +15,10 @@ import {
   ProofService,
   RHSResolver,
   RootInfo,
+  base64UrlToBytes,
   byteDecoder,
   byteEncoder,
+  bytesToBase64url,
   computeIden3JwzPayload,
   createIden3JwzProof,
   iden3JwzProofOptions,
@@ -35,6 +36,7 @@ import {
 } from '../helpers';
 
 const MINUTE = 60 * 1000;
+const LIFETIME = 14 * 24 * 60 * MINUTE;
 const BYTE_ORDER_MARK = '﻿';
 
 describe('iden3-jwz-rdfc-2026', () => {
@@ -56,14 +58,12 @@ describe('iden3-jwz-rdfc-2026', () => {
   });
 
   const compactJwz = (): string =>
-    byteDecoder.decode(
-      base64url.parse((proofOf(secured).proofValue as string).slice(1), { loose: true })
-    );
+    byteDecoder.decode(base64UrlToBytes((proofOf(secured).proofValue as string).slice(1)));
 
   const withSegment = (index: number, change: (text: string) => string): JsonDocumentObject => {
     const segments = compactJwz().split('.');
-    const text = byteDecoder.decode(base64url.parse(segments[index], { loose: true }));
-    segments[index] = base64url.stringify(byteEncoder.encode(change(text)), { pad: false });
+    const text = byteDecoder.decode(base64UrlToBytes(segments[index]));
+    segments[index] = bytesToBase64url(byteEncoder.encode(change(text)));
     return withProofValue(proofValueFromCompactJwz(segments.join('.')));
   };
 
@@ -78,11 +78,16 @@ describe('iden3-jwz-rdfc-2026', () => {
 
   const verify = (
     input: JsonDocumentObject,
-    options: { signer?: string; now?: Date; packageManager?: IPackageManager } = {}
+    options: {
+      signer?: string;
+      now?: Date;
+      maxProofLifetime?: number;
+      packageManager?: IPackageManager;
+    } = {}
   ) =>
     verifyIden3JwzProof(input, {
       signer: did.string(),
-      now: created,
+      maxProofLifetime: LIFETIME,
       packageManager,
       ...options
     });
@@ -131,8 +136,8 @@ describe('iden3-jwz-rdfc-2026', () => {
       id: did.string(),
       controller: did.string()
     };
-    created = new Date(Math.floor(Date.now() / 1000) * 1000);
-    expires = new Date(created.getTime() + 14 * 24 * 60 * MINUTE);
+    created = new Date(Math.floor((Date.now() - 60 * MINUTE) / 1000) * 1000);
+    expires = new Date(created.getTime() + LIFETIME);
     const proof = await createIden3JwzProof(document, {
       signer: did,
       created,
@@ -187,13 +192,40 @@ describe('iden3-jwz-rdfc-2026', () => {
     );
   });
 
-  it('refuses a proof with a date that is not valid', async () => {
-    const withDate = (name: string): JsonDocumentObject => ({
+  it('refuses a proof whose lifetime is longer than maxProofLifetime', async () => {
+    await expect(verify(secured, { maxProofLifetime: LIFETIME - 1000 })).rejects.toThrow(
+      'maxProofLifetime'
+    );
+  });
+
+  it('refuses a date that is not valid', async () => {
+    const withDate = (name: string, value: string): JsonDocumentObject => ({
       ...secured,
-      proof: { ...proofOf(secured), [name]: 'tomorrow evening' }
+      proof: { ...proofOf(secured), [name]: value }
     });
-    await expect(verify(withDate('created'))).rejects.toThrow('created must be a valid date');
-    await expect(verify(withDate('expires'))).rejects.toThrow('expires must be a valid date');
+    const impossible = '2026-13-45T00:00:00Z';
+    await expect(verify(withDate('created', impossible))).rejects.toThrow(
+      'created must be a valid date'
+    );
+    await expect(verify(withDate('expires', impossible))).rejects.toThrow(
+      'expires must be a valid date'
+    );
+  });
+
+  it('refuses a date without Z or with a fraction', async () => {
+    const withDate = (name: string, value: string): JsonDocumentObject => ({
+      ...secured,
+      proof: { ...proofOf(secured), [name]: value }
+    });
+    const [seconds] = (proofOf(secured).created as string).split('Z');
+    for (const value of [seconds, `${seconds}.000Z`, seconds.slice(0, 10)]) {
+      await expect(verify(withDate('created', value))).rejects.toThrow(
+        'created must have the form'
+      );
+      await expect(verify(withDate('expires', value))).rejects.toThrow(
+        'expires must have the form'
+      );
+    }
   });
 
   it('refuses a GIST root that was replaced more than 5 minutes before created', async () => {
@@ -217,6 +249,12 @@ describe('iden3-jwz-rdfc-2026', () => {
     await expect(computeIden3JwzPayload(secured, proofOptions)).rejects.toThrow('proof');
     const withoutContext = { id: did.string() };
     await expect(computeIden3JwzPayload(withoutContext, proofOptions)).rejects.toThrow('@context');
+  });
+
+  it('refuses a created or expires that is not a valid date', () => {
+    const invalid = new Date(NaN);
+    expect(() => iden3JwzProofOptions(did, invalid, expires)).toThrow('valid dates');
+    expect(() => iden3JwzProofOptions(did, created, invalid)).toThrow('valid dates');
   });
 
   it('refuses expires that is not later than created', () => {

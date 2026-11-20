@@ -1,21 +1,15 @@
 import { Token } from '@iden3/js-jwz';
 import { DocumentLoader } from '@iden3/js-jsonld-merklization';
-import {
-  IPackageManager,
-  JsonDocumentObject,
-  PROTOCOL_CONSTANTS,
-  ZKPPacker
-} from '../../iden3comm';
-import { MediaType } from '../../iden3comm/constants';
+import { IPackageManager, JsonDocumentObject, ZKPPacker } from '../../iden3comm';
+import { DEFAULT_AUTH_VERIFY_DELAY, MediaType } from '../../iden3comm/constants';
 import { base64UrlToBytes, byteDecoder, byteEncoder, bytesToBase64url } from '../../utils';
 import { DATA_INTEGRITY_PROOF_TYPE, IDEN3_JWZ_RDFC_2026 } from './constants';
 import { computeIden3JwzPayload } from './canonical';
 
-const { DEFAULT_AUTH_VERIFY_DELAY } = PROTOCOL_CONSTANTS;
-
 export type VerifyIden3JwzProofOptions = {
   signer: string;
   packageManager: IPackageManager;
+  maxProofLifetime: number;
   now?: Date;
   documentLoader?: DocumentLoader;
 };
@@ -26,9 +20,15 @@ const requireMember = (proof: JsonDocumentObject, name: string, expected: string
   }
 };
 
+const DATE_TIME_FORM = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+
 const requireDate = (proof: JsonDocumentObject, name: string): Date => {
-  const date = new Date(proof[name] as string);
-  if (typeof proof[name] !== 'string' || Number.isNaN(date.getTime())) {
+  const value = proof[name];
+  if (typeof value !== 'string' || !DATE_TIME_FORM.test(value)) {
+    throw new Error(`the proof ${name} must have the form YYYY-MM-DDThh:mm:ssZ`);
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
     throw new Error(`the proof ${name} must be a valid date`);
   }
   return date;
@@ -36,7 +36,13 @@ const requireDate = (proof: JsonDocumentObject, name: string): Date => {
 
 export const verifyIden3JwzProof = async (
   secured: JsonDocumentObject,
-  { signer, packageManager, now = new Date(), documentLoader }: VerifyIden3JwzProofOptions
+  {
+    signer,
+    packageManager,
+    maxProofLifetime,
+    now = new Date(),
+    documentLoader
+  }: VerifyIden3JwzProofOptions
 ): Promise<void> => {
   const { proof, ...document } = secured;
   if (typeof proof !== 'object' || proof === null || Array.isArray(proof)) {
@@ -48,6 +54,9 @@ export const verifyIden3JwzProof = async (
   requireMember(proof, 'verificationMethod', `${signer}#state-info`);
   const created = requireDate(proof, 'created');
   const expires = requireDate(proof, 'expires');
+  if (!(expires.getTime() - created.getTime() <= maxProofLifetime)) {
+    throw new Error('the proof lifetime is longer than maxProofLifetime');
+  }
   if (!(created.getTime() <= now.getTime() + DEFAULT_AUTH_VERIFY_DELAY)) {
     throw new Error('the proof is created too far ahead of now');
   }

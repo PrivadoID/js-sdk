@@ -19,6 +19,9 @@ export const iden3JwzProofOptions = (
   created: Date,
   expires: Date
 ): Iden3JwzProofOptions => {
+  if (Number.isNaN(created.getTime()) || Number.isNaN(expires.getTime())) {
+    throw new Error('created and expires must be valid dates');
+  }
   if (Math.floor(expires.getTime() / 1000) <= Math.floor(created.getTime() / 1000)) {
     throw new Error('expires must be later than created');
   }
