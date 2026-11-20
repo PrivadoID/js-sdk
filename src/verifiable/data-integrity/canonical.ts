@@ -17,8 +17,6 @@ export class JsonLdCanonicalizationError extends Error {
   }
 }
 
-type PathStep = string | number;
-
 const plainCopy = (input: JsonDocumentObject): JsonDocumentObject =>
   JSON.parse(JSON.stringify(input)) as JsonDocumentObject;
 
@@ -27,7 +25,9 @@ const requireNoNull = (value: unknown, member: string | undefined): void => {
     throw new JsonLdCanonicalizationError(
       member === undefined
         ? 'a null value is not signed'
-        : `member ${JSON.stringify(member)} is null and canonicalization drops it`
+        : `member ${JSON.stringify(
+            member
+          )} is null (or NaN, Infinity or undefined) and canonicalization drops it`
     );
   }
   if (Array.isArray(value)) {
@@ -39,6 +39,28 @@ const requireNoNull = (value: unknown, member: string | undefined): void => {
       if (key !== CONTEXT_KEY) {
         requireNoNull(item, key);
       }
+    }
+  }
+};
+
+const requireContextUrls = (value: unknown): void => {
+  if (Array.isArray(value)) {
+    value.forEach(requireContextUrls);
+    return;
+  }
+  if (typeof value !== 'object' || value === null) {
+    return;
+  }
+  for (const [key, member] of Object.entries(value as Record<string, unknown>)) {
+    if (key !== CONTEXT_KEY) {
+      requireContextUrls(member);
+      continue;
+    }
+    const urls = Array.isArray(member) ? member : [member];
+    if (!urls.every((url) => typeof url === 'string' && url !== '')) {
+      throw new JsonLdCanonicalizationError(
+        'an @context value must be a URL string or an array of URL strings'
+      );
     }
   }
 };
@@ -86,6 +108,9 @@ const requireAbsoluteIRIs = (expanded: unknown): void => {
     if (key === '@value') {
       continue;
     }
+    if (key === '@index') {
+      throw new JsonLdCanonicalizationError('an @index key is not signed');
+    }
     if (key === '@id' || key === '@type') {
       requireIRIValues(key, member);
     } else if (isKeyword(key)) {
@@ -122,42 +147,38 @@ const canonize = async (
   return canonicalForm;
 };
 
-const findEmptyArrays = (value: unknown, path: PathStep[], found: PathStep[][]): void => {
+const countEmptyArrays = (value: unknown): number => {
   if (Array.isArray(value)) {
-    if (value.length === 0) {
-      found.push(path);
-      return;
-    }
-    value.forEach((item, index) => findEmptyArrays(item, [...path, index], found));
-    return;
+    return value.length === 0
+      ? 1
+      : value.reduce<number>((total, item) => total + countEmptyArrays(item), 0);
   }
-  if (typeof value === 'object' && value !== null) {
-    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-      if (key !== CONTEXT_KEY) {
-        findEmptyArrays(item, [...path, key], found);
-      }
-    }
+  if (typeof value !== 'object' || value === null) {
+    return 0;
   }
+  return Object.entries(value as Record<string, unknown>).reduce(
+    (total, [key, member]) => (key === CONTEXT_KEY ? total : total + countEmptyArrays(member)),
+    0
+  );
 };
 
-const withoutPath = (input: JsonDocumentObject, path: PathStep[]): JsonDocumentObject => {
-  const copy = plainCopy(input);
-  let parent = copy as unknown as Record<PathStep, unknown>;
-  for (const step of path.slice(0, -1)) {
-    parent = parent[step] as Record<PathStep, unknown>;
+const countSignedEmptyArrays = (expanded: unknown): number => {
+  if (Array.isArray(expanded)) {
+    return expanded.reduce<number>((total, item) => total + countSignedEmptyArrays(item), 0);
   }
-  const last = path[path.length - 1];
-  if (Array.isArray(parent)) {
-    parent.splice(last as number, 1);
-  } else {
-    delete parent[last];
+  if (typeof expanded !== 'object' || expanded === null) {
+    return 0;
   }
-  return copy;
-};
-
-const memberName = (path: PathStep[]): string => {
-  const name = [...path].reverse().find((step) => typeof step === 'string');
-  return JSON.stringify(name ?? '');
+  const node = expanded as Record<string, unknown>;
+  if (node['@type'] === '@json') {
+    return countEmptyArrays(node['@value']);
+  }
+  return Object.entries(node).reduce((total, [key, member]) => {
+    if (key === '@list' && Array.isArray(member) && member.length === 0) {
+      return total + 1;
+    }
+    return total + countSignedEmptyArrays(member);
+  }, 0);
 };
 
 export type CanonicalizeStrictOptions = { allowUnsignedEmptyArrays?: boolean };
@@ -167,38 +188,25 @@ export const canonicalizeStrict = async (
   documentLoader: DocumentLoader,
   options: CanonicalizeStrictOptions = {}
 ): Promise<string> => {
-  requireNoNull(input, undefined);
   const copy = plainCopy(input);
-  let canonicalForm: string;
+  requireNoNull(copy, undefined);
+  requireContextUrls(copy);
   try {
     const expanded = await jsonld.expand(copy, {
       safe: true,
       documentLoader: toJsonLdLoader(documentLoader)
     } as Options.Expand);
     requireAbsoluteIRIs(expanded);
-    canonicalForm = await canonize(copy, documentLoader);
+    if (
+      !options.allowUnsignedEmptyArrays &&
+      countEmptyArrays(copy) !== countSignedEmptyArrays(expanded)
+    ) {
+      throw new JsonLdCanonicalizationError('an empty array is dropped by canonicalization');
+    }
+    return await canonize(copy, documentLoader);
   } catch (err) {
     throw wrapJsonLdError(err);
   }
-  if (options.allowUnsignedEmptyArrays) {
-    return canonicalForm;
-  }
-  const emptyArrays: PathStep[][] = [];
-  findEmptyArrays(copy, [], emptyArrays);
-  for (const path of emptyArrays) {
-    let without: string;
-    try {
-      without = await canonize(withoutPath(copy, path), documentLoader);
-    } catch (err) {
-      throw wrapJsonLdError(err);
-    }
-    if (without === canonicalForm) {
-      throw new JsonLdCanonicalizationError(
-        `member ${memberName(path)} is an empty array that canonicalization drops`
-      );
-    }
-  }
-  return canonicalForm;
 };
 
 const sha256OfText = (text: string): Uint8Array => sha256(new TextEncoder().encode(text));
