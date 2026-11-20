@@ -69,14 +69,35 @@ export class JoseService {
     return generalDecrypt(data as GeneralJWE, getKey);
   }
 
+  // Some encoders (e.g. iden3comm's Go jwe.Encrypt) repeat protected header parameters,
+  // including object-valued ones like epk, in the per-recipient header. jose requires the
+  // two to be disjoint, so drop parameters whose values are equal. Differing values are
+  // kept, so jose still rejects a per-recipient header that contradicts the protected one.
   private removeDuplicates = (
     protectedHeader: Record<string, unknown>,
     recipientHeader: Record<string, unknown>
   ) => {
     const cleaned = { ...recipientHeader };
     for (const [key, value] of Object.entries(protectedHeader)) {
-      if (cleaned[key] === value) delete cleaned[key];
+      if (isEqualJSONValue(cleaned[key], value)) delete cleaned[key];
     }
     return cleaned;
   };
 }
+
+const isEqualJSONValue = (a: unknown, b: unknown): boolean => {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const aRecord = a as Record<string, unknown>;
+  const bRecord = b as Record<string, unknown>;
+  const aKeys = Object.keys(aRecord);
+  return (
+    aKeys.length === Object.keys(bRecord).length &&
+    aKeys.every(
+      (key) =>
+        Object.prototype.hasOwnProperty.call(bRecord, key) &&
+        isEqualJSONValue(aRecord[key], bRecord[key])
+    )
+  );
+};
