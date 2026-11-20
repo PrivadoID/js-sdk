@@ -1,4 +1,4 @@
-import { ProvingMethodAlg } from '@iden3/js-jwz';
+import { ProvingMethodAlg, Token } from '@iden3/js-jwz';
 import { CircuitId } from '../../circuits';
 import { IProofService } from '../../proof';
 import { CircuitLoadMode, ICircuitStorage } from '../../storage';
@@ -67,6 +67,11 @@ export class DefaultZKPPacker extends ZKPPacker {
     return super.pack(payload, params);
   }
 
+  async verifyToken(token: Token, sender: string, opts?: StateVerificationOpts): Promise<void> {
+    await this.loadVerificationParams(token);
+    return super.verifyToken(token, sender, opts);
+  }
+
   /**
    * Unpacks a ZKP envelope into a `BasicMessage` by parsing the token, loading the verification key if necessary,
    * and preparing the verification parameters for the proving method algorithm.
@@ -80,7 +85,11 @@ export class DefaultZKPPacker extends ZKPPacker {
    */
   async unpack(envelope: Uint8Array): Promise<BasicMessage> {
     const token = await this.parseToken(envelope);
+    const provingMethodAlg = await this.loadVerificationParams(token);
+    return super.unpackMessage(token, provingMethodAlg);
+  }
 
+  protected async loadVerificationParams(token: Token): Promise<ProvingMethodAlg> {
     const circuitId = token.circuitId as CircuitId;
 
     const provingMethodAlg = new ProvingMethodAlg(token.alg, circuitId);
@@ -102,6 +111,6 @@ export class DefaultZKPPacker extends ZKPPacker {
       });
     }
 
-    return super.unpackMessage(token, provingMethodAlg);
+    return provingMethodAlg;
   }
 }

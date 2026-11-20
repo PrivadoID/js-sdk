@@ -35,6 +35,9 @@ export default [
             ...cspell.cspellConfig,
             ignoreWords: [
               'Unmarshalled',
+              'cryptosuite',
+              'rdfc',
+              'URDNA',
               'unmarshal',
               'JUvpllMEYUZ2joO59UNui_XYDqxVqiFLLAJ8klWuPBw',
               'gdwj',

@@ -147,10 +147,11 @@ export class ZKPPacker implements IPacker {
     return byteEncoder.encode(tokenStr);
   }
 
-  protected async unpackMessage(
+  protected async verifyTokenProof(
     token: Token,
-    provingMethodAlg: ProvingMethodAlg
-  ): Promise<BasicMessage> {
+    provingMethodAlg: ProvingMethodAlg,
+    opts?: StateVerificationOpts
+  ): Promise<void> {
     const verificationParams = this.verificationParamsMap.get(provingMethodAlg.toString());
     if (!verificationParams?.key) {
       throw new Error(ErrPackedWithUnsupportedCircuit);
@@ -163,19 +164,31 @@ export class ZKPPacker implements IPacker {
     const verificationResult = await verificationParams?.verificationFn?.verify(
       token.circuitId,
       token.zkProof.pub_signals,
-      this._opts
+      { ...this._opts, ...opts }
     );
 
     if (!verificationResult) {
       throw new Error(ErrStateVerificationFailed);
     }
+  }
+
+  protected async unpackMessage(
+    token: Token,
+    provingMethodAlg: ProvingMethodAlg
+  ): Promise<BasicMessage> {
+    await this.verifyTokenProof(token, provingMethodAlg);
 
     const message = JSON.parse(token.getPayload());
 
     // should throw if error
-    await verifySender(token, message);
+    await verifySender(token, message.from);
 
     return message;
+  }
+
+  async verifyToken(token: Token, sender: string, opts?: StateVerificationOpts): Promise<void> {
+    await this.verifyTokenProof(token, new ProvingMethodAlg(token.alg, token.circuitId), opts);
+    await verifySender(token, sender);
   }
 
   protected parseToken(msg: Uint8Array): Promise<Token> {
@@ -231,13 +244,13 @@ export class ZKPPacker implements IPacker {
   }
 }
 
-const verifySender = async (token: Token, msg: BasicMessage): Promise<void> => {
+const verifySender = async (token: Token, from?: string): Promise<void> => {
   switch (token.circuitId) {
     case CircuitId.AuthV2:
     case CircuitId.AuthV3_8_32:
     case CircuitId.AuthV3:
       {
-        if (!msg.from) {
+        if (!from) {
           throw new Error(ErrSenderNotUsedTokenCreation);
         }
         const authSignals = (
@@ -252,7 +265,7 @@ const verifySender = async (token: Token, msg: BasicMessage): Promise<void> => {
           throw new Error(ErrSenderNotUsedTokenCreation);
         }
 
-        if (msg.from !== did.string()) {
+        if (from !== did.string()) {
           throw new Error(ErrSenderNotUsedTokenCreation);
         }
       }
