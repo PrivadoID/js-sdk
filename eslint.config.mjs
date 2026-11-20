@@ -37,6 +37,8 @@ export default [
               'Unmarshalled',
               'cryptosuite',
               'rdfc',
+              'URDNA',
+              'jwzsuite',
               'unmarshal',
               'JUvpllMEYUZ2joO59UNui_XYDqxVqiFLLAJ8klWuPBw',
               'gdwj',
