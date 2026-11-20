@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CircuitId,
   ICredentialWallet,
@@ -58,11 +58,26 @@ describe('verifyState with a replaced GIST root', () => {
     ).rejects.toThrow('global state is outdated');
   });
 
-  it('compares the replaced time with the current time when there is no reference time', async () => {
-    const proofService = createProofService({});
-    await expect(proofService.verifyState(CircuitId.AuthV2, pubSignals, opts)).rejects.toThrow(
-      'global state is outdated'
-    );
+  describe('without a reference time', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('accepts the state when Date.now is inside the accepted delay', async () => {
+      vi.spyOn(Date, 'now').mockReturnValue(replacedAt.getTime() + 4 * minute);
+      const proofService = createProofService({});
+      await expect(proofService.verifyState(CircuitId.AuthV2, pubSignals, opts)).resolves.toBe(
+        true
+      );
+    });
+
+    it('refuses the state when Date.now is outside the accepted delay', async () => {
+      vi.spyOn(Date, 'now').mockReturnValue(replacedAt.getTime() + 6 * minute);
+      const proofService = createProofService({});
+      await expect(proofService.verifyState(CircuitId.AuthV2, pubSignals, opts)).rejects.toThrow(
+        'global state is outdated'
+      );
+    });
   });
 
   it('accepts a GIST root that is not replaced when the reference time is old', async () => {
