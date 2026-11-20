@@ -730,7 +730,7 @@ export class ProofService implements IProofService {
       }
 
       const timeDiff =
-        Date.now() -
+        (opts?.referenceTime ?? new Date()).getTime() -
         getDateFromUnixTimestamp(Number(globalStateInfo.replacedAtTimestamp)).getTime();
 
       if (

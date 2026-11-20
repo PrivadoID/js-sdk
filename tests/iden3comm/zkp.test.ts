@@ -1,15 +1,33 @@
+import path from 'node:path';
 import { DID } from '@iden3/js-iden3-core';
-import { Token, ProvingMethodAlg } from '@iden3/js-jwz';
+import { Token, ProvingMethodAlg, proving } from '@iden3/js-jwz';
 
 import {
   byteDecoder,
   byteEncoder,
+  CircuitId,
+  CredentialStatusResolverRegistry,
+  CredentialStatusType,
+  CredentialWallet,
+  DefaultZKPPacker,
+  FSCircuitStorage,
+  IdentityWallet,
+  ProofService,
+  RHSResolver,
+  ZKPPacker,
   ZKPPackerParams,
   PROTOCOL_CONSTANTS,
   AuthV2PubSignals
 } from '../../src';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { initZKPPacker } from './mock/proving';
+import {
+  MOCK_STATE_STORAGE,
+  SEED_USER,
+  createIdentity,
+  getInMemoryDataStorage,
+  registerKeyProvidersInMemoryKMS
+} from '../helpers';
 describe('zkp packer tests', () => {
   it('test zkp packer pack', async () => {
     const p = await initZKPPacker();
@@ -54,5 +72,90 @@ describe('zkp packer tests', () => {
     expect(accept).to.be.eq(
       `iden3comm/v1;env=${PROTOCOL_CONSTANTS.MediaType.ZKPMessage};alg=groth16;circuitIds=authV2`
     );
+  });
+
+  describe('verifyToken', () => {
+    const prepare = async () => {
+      const kms = registerKeyProvidersInMemoryKMS();
+      const dataStorage = getInMemoryDataStorage(MOCK_STATE_STORAGE);
+      const circuitStorage = new FSCircuitStorage({
+        dirname: path.join(__dirname, '../proofs/testdata')
+      });
+      const resolvers = new CredentialStatusResolverRegistry();
+      resolvers.register(
+        CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
+        new RHSResolver(dataStorage.states)
+      );
+      const credWallet = new CredentialWallet(dataStorage, resolvers);
+      const idWallet = new IdentityWallet(kms, dataStorage, credWallet);
+      const proofService = new ProofService(
+        idWallet,
+        credWallet,
+        circuitStorage,
+        MOCK_STATE_STORAGE
+      );
+      const { did } = await createIdentity(idWallet, {
+        seed: SEED_USER,
+        revocationOpts: {
+          type: CredentialStatusType.Iden3ReverseSparseMerkleTreeProof,
+          id: 'https://rhs.example.com',
+          genesisPublishingDisabled: true
+        }
+      });
+      const verifyState = vi.spyOn(proofService, 'verifyState').mockResolvedValue(true);
+      const packer = new DefaultZKPPacker(circuitStorage, proofService, {
+        acceptedStateTransitionDelay: 1000
+      });
+      const packed = await packer.pack(byteEncoder.encode('payload that is not JSON'), {
+        senderDID: did,
+        profileNonce: 0,
+        provingMethodAlg: proving.provingMethodGroth16AuthV3Instance.methodAlg
+      } as ZKPPackerParams);
+      const token = await Token.parse(byteDecoder.decode(packed));
+      return { packer, token, did, verifyState };
+    };
+
+    let setup: () => ReturnType<typeof prepare>;
+
+    beforeAll(async () => {
+      const prepared = await prepare();
+      setup = async () => prepared;
+    }, 60000);
+
+    it('accepts a token that the packer packed when the sender is right', async () => {
+      const { packer, token, did, verifyState } = await setup();
+      const referenceTime = new Date('2026-01-01T00:00:00Z');
+      await expect(
+        packer.verifyToken(token, did.string(), { referenceTime })
+      ).resolves.toBeUndefined();
+      expect(verifyState).toHaveBeenCalledWith(CircuitId.AuthV3, token.zkProof.pub_signals, {
+        acceptedStateTransitionDelay: 1000,
+        referenceTime
+      });
+    });
+
+    it('throws when the sender is not the sender of the token', async () => {
+      const { packer, token } = await setup();
+      const other = 'did:iden3:polygon:mumbai:x4jcHP4XHTK3vX58AHZPyHE8kYjneyE6FZRfz7K29';
+      await expect(packer.verifyToken(token, other)).rejects.toThrow(
+        'sender of message is not used for jwz token creation'
+      );
+    });
+
+    it('throws when the state verification function refuses the state', async () => {
+      const { packer, token, did, verifyState } = await setup();
+      verifyState.mockResolvedValueOnce(false);
+      await expect(packer.verifyToken(token, did.string())).rejects.toThrow(
+        'message state verification failed'
+      );
+    });
+
+    it('throws when there are no verification parameters for the circuit', async () => {
+      const { token, did } = await setup();
+      const packer = new ZKPPacker(new Map(), new Map());
+      await expect(packer.verifyToken(token, did.string())).rejects.toThrow(
+        'message was packed with unsupported circuit'
+      );
+    });
   });
 });
