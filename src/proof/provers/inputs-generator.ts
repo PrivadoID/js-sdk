@@ -3,6 +3,7 @@ import {
   Iden3SparseMerkleTreeProof,
   ProofType,
   RevocationStatus,
+  VerifiableConstants,
   W3CCredential
 } from '../../verifiable';
 import { ZeroKnowledgeProofRequest } from '../../iden3comm';
@@ -51,6 +52,8 @@ export type ProofGenerationOptions = {
   challenge?: bigint;
   credential?: W3CCredential;
   credentialRevocationStatus?: RevocationStatus;
+  // status of the issuer auth claim that signed `credential`, resolved when missing
+  issuerAuthRevocationStatus?: RevocationStatus;
   verifierDid?: DID;
   linkNonce?: bigint;
   bypassCache?: boolean;
@@ -159,7 +162,9 @@ export class InputGenerator {
         userDID
       };
 
-      const rs = await this._credentialWallet.getRevocationStatus(credentialStatus, opts);
+      const rs =
+        preparedCredential.issuerAuthRevStatus ??
+        (await this._credentialWallet.getRevocationStatus(credentialStatus, opts));
 
       const issuerAuthNonRevProof: MTProof = toClaimNonRevStatus(rs);
 
@@ -180,6 +185,13 @@ export class InputGenerator {
     }
 
     return circuitClaim;
+  }
+
+  // circuits reject a signature made by a revoked issuer auth claim with a bare "Assert Failed"
+  private assertIssuerAuthClaimNotRevoked(circuitClaim: CircuitClaim): void {
+    if (circuitClaim.signatureProof?.issuerAuthNonRevProof.proof?.existence) {
+      throw new Error(VerifiableConstants.ERRORS.PROOF_SERVICE_ISSUER_AUTH_CLAIM_REVOKED);
+    }
   }
 
   async prepareAuthBJJCredential(
@@ -361,6 +373,7 @@ export class InputGenerator {
     circuitQueries
   }: InputContext): Promise<GenerateInputsResult> => {
     const circuitClaimData = await this.newCircuitClaimData(preparedCredential);
+    this.assertIssuerAuthClaimNotRevoked(circuitClaimData);
 
     circuitClaimData.nonRevProof = toClaimNonRevStatus(preparedCredential.revStatus);
 
@@ -395,6 +408,7 @@ export class InputGenerator {
     circuitQueries
   }: InputContext): Promise<GenerateInputsResult> => {
     const circuitClaimData = await this.newCircuitClaimData(preparedCredential);
+    this.assertIssuerAuthClaimNotRevoked(circuitClaimData);
 
     const authInfo = await this.prepareAuthBJJCredential(identifier);
 
@@ -492,6 +506,9 @@ export class InputGenerator {
         }
         break;
     }
+    if (proofType === ProofType.BJJSignature) {
+      this.assertIssuerAuthClaimNotRevoked(circuitClaimData);
+    }
 
     const query = circuitQueries[0];
 
@@ -577,6 +594,9 @@ export class InputGenerator {
           throw Error('claim has no MTP or signature proof');
         }
         break;
+    }
+    if (proofType === ProofType.BJJSignature) {
+      this.assertIssuerAuthClaimNotRevoked(circuitClaimData);
     }
 
     const query = circuitQueries[0];

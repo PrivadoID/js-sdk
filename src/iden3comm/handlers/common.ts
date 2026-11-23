@@ -18,7 +18,7 @@ import { mergeObjects } from '../../utils';
 import { RevocationStatus, VerifiableConstants, W3CCredential } from '../../verifiable';
 import { DID, getUnixTimestamp } from '@iden3/js-iden3-core';
 import { IProofService } from '../../proof';
-import { CircuitId } from '../../circuits';
+import { CircuitId, getRequiredProofType } from '../../circuits';
 import {
   AcceptJwsAlgorithms,
   defaultAcceptProfile,
@@ -129,7 +129,7 @@ export const processZeroKnowledgeProofRequests = async (
 
   const groupedCredentialsCache = new Map<
     number,
-    { cred: W3CCredential; revStatus?: RevocationStatus }
+    { cred: W3CCredential; revStatus?: RevocationStatus; issuerAuthRevStatus?: RevocationStatus }
   >();
 
   const zkpResponses = [];
@@ -176,9 +176,15 @@ export const processZeroKnowledgeProofRequests = async (
         const combinedQuery = combinedQueryData.query;
 
         if (!groupedCredentialsCache.has(groupId)) {
+          // one credential serves the whole group, so honor any proof type forced in the group
+          const proofType = requestScope
+            .filter((req) => req.query?.groupId === groupId)
+            .map((req) => getRequiredProofType(req.circuitId, req.query))
+            .find((type) => type !== undefined);
           const credWithRevStatus = await proofService.findCredentialByProofQuery(
             to,
-            combinedQueryData.query
+            combinedQueryData.query,
+            { proofType }
           );
           if (!credWithRevStatus.cred) {
             if (proofReq.optional) {
@@ -203,6 +209,7 @@ export const processZeroKnowledgeProofRequests = async (
         skipRevocation: Boolean(query?.skipClaimRevocationCheck),
         credential: credWithRevStatus?.cred,
         credentialRevocationStatus: credWithRevStatus?.revStatus,
+        issuerAuthRevocationStatus: credWithRevStatus?.issuerAuthRevStatus,
         linkNonce: combinedQueryData?.linkNonce ? BigInt(combinedQueryData.linkNonce) : undefined,
         bypassCache: opts.bypassProofsCache,
         allowExpiredCredentials: opts.allowExpiredCredentials
@@ -212,6 +219,7 @@ export const processZeroKnowledgeProofRequests = async (
         VerifiableConstants.ERRORS.PROOF_SERVICE_NO_CREDENTIAL_FOR_IDENTITY_OR_PROFILE,
         VerifiableConstants.ERRORS.ID_WALLET_NO_CREDENTIAL_SATISFIED_QUERY,
         VerifiableConstants.ERRORS.CREDENTIAL_WALLET_ALL_CREDENTIALS_ARE_REVOKED,
+        VerifiableConstants.ERRORS.PROOF_SERVICE_ISSUER_AUTH_CLAIM_REVOKED,
         VerifiableConstants.ERRORS.PROOF_SERVICE_CREDENTIAL_IS_EXPIRED
       ];
       // handle only expected errors for optional proof requests when credential is not found, revoked, or expired - otherwise throw

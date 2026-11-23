@@ -29,6 +29,8 @@ export type PreparedCredential = {
   credential: W3CCredential;
   credentialCoreClaim: Claim;
   revStatus?: RevocationStatus;
+  // status of the issuer auth claim that signed the credential, resolved when missing
+  issuerAuthRevStatus?: RevocationStatus;
 };
 
 export type PreparedAuthBJJCredential = {
