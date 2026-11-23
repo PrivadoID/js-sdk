@@ -6,6 +6,7 @@ import { AuthV3PubSignals } from './auth-v3';
 import { IUnmarshallerPubSignals } from './common';
 import { Operators, QueryOperators } from './comparer';
 import { CircuitId } from './models';
+import { ProofType } from '../verifiable';
 
 const allOperations = Object.values(QueryOperators);
 const v2Operations = [
@@ -218,5 +219,36 @@ export const getUnmarshallerForCircuitId = (
         };
       }
     }
+  }
+};
+
+/**
+ * Returns the credential proof type that a circuit is forced to use: Sig V2 circuits always use
+ * the signature, MTP V2 circuits the MTP, and V3 circuits whatever the query requests.
+ * Returns undefined when the circuit doesn't force one, in which case the MTP is used if the
+ * credential has one, and the signature otherwise.
+ *
+ * @param {string} circuitId - circuit of the proof request
+ * @param {{ proofType?: string }} [query] - query of the proof request
+ * @returns {ProofType | undefined}
+ */
+export const getRequiredProofType = (
+  circuitId: string,
+  query?: { proofType?: string }
+): ProofType | undefined => {
+  switch (circuitId) {
+    case CircuitId.AtomicQuerySigV2:
+    case CircuitId.AtomicQuerySigV2OnChain:
+      return ProofType.BJJSignature;
+    case CircuitId.AtomicQueryMTPV2:
+    case CircuitId.AtomicQueryMTPV2OnChain:
+      return ProofType.Iden3SparseMerkleTreeProof;
+    case CircuitId.AtomicQueryV3:
+    case CircuitId.AtomicQueryV3OnChain:
+    case CircuitId.AtomicQueryV3Stable:
+    case CircuitId.AtomicQueryV3OnChainStable:
+      return Object.values(ProofType).find((proofType) => proofType === query?.proofType);
+    default:
+      return undefined;
   }
 };

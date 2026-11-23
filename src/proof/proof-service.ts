@@ -9,16 +9,18 @@ import {
   AuthV2PubSignals,
   AuthV3PubSignals,
   CircuitId,
+  getRequiredProofType,
   Operators,
   Query,
   TreeState,
   ValueProof
 } from '../circuits';
-import { ICredentialWallet } from '../credentials';
+import { getIssuerAuthClaimRevocationStatus, ICredentialWallet } from '../credentials';
 import { IIdentityWallet } from '../identity';
 import {
   createVerifiablePresentation,
   ProofQuery,
+  ProofType,
   RevocationStatus,
   VerifiableConstants,
   W3CCredential
@@ -200,12 +202,39 @@ export interface IProofService {
     ethSigner: Signer
   ): Promise<string>;
 
+  /**
+   * Finds a credential that satisfies the query and can be proven: not revoked (unless the query
+   * skips the claim revocation check), and having the proof type the circuit requires (see
+   * getRequiredProofType), with a non-revoked issuer auth claim when it is proven by signature.
+   *
+   * @param {DID} did - identity or profile that owns the credential
+   * @param {ProofQuery} query - query the credential must satisfy
+   * @param opts - `proofType`: proof type the circuit requires
+   * @returns the credential with its revocation status (`revStatus`, unless the check is skipped)
+   *   and the status of the issuer auth claim that signed it (`issuerAuthRevStatus`, when it was
+   *   checked), to pass to proof generation
+   */
   findCredentialByProofQuery(
     did: DID,
     query: ProofQuery,
-    opts?: { skipClaimRevocationCheck: boolean }
-  ): Promise<{ cred: W3CCredential; revStatus: RevocationStatus | undefined }>;
+    opts?: { skipClaimRevocationCheck?: boolean; proofType?: ProofType }
+  ): Promise<CredentialWithRevocationStatuses>;
 }
+
+/**
+ * Credential found by {@link IProofService.findCredentialByProofQuery}
+ *
+ * @public
+ * @property {W3CCredential} cred - credential
+ * @property {RevocationStatus} [revStatus] - revocation status of the credential
+ * @property {RevocationStatus} [issuerAuthRevStatus] - revocation status of the issuer auth claim
+ *   that signed the credential
+ */
+export type CredentialWithRevocationStatuses = {
+  cred: W3CCredential;
+  revStatus: RevocationStatus | undefined;
+  issuerAuthRevStatus?: RevocationStatus;
+};
 /**
  * Proof service is an implementation of IProofService
  * that works with a native groth16 prover
@@ -310,17 +339,24 @@ export class ProofService implements IProofService {
     let credentialWithRevStatus: {
       cred: W3CCredential | undefined;
       revStatus: RevocationStatus | undefined;
-    } = { cred: opts.credential, revStatus: opts.credentialRevocationStatus };
+      issuerAuthRevStatus?: RevocationStatus;
+    } = {
+      cred: opts.credential,
+      revStatus: opts.credentialRevocationStatus,
+      issuerAuthRevStatus: opts.issuerAuthRevocationStatus
+    };
 
     if (!opts.credential) {
-      credentialWithRevStatus = await this.findCredentialByProofQuery(identifier, query);
+      credentialWithRevStatus = await this.findCredentialByProofQuery(identifier, query, {
+        proofType: getRequiredProofType(proofReq.circuitId, query)
+      });
     }
 
     if (opts.credential && !opts.credentialRevocationStatus && !opts.skipRevocation) {
       const revStatus = await this._credentialWallet.getRevocationStatusFromCredential(
         opts.credential
       );
-      credentialWithRevStatus = { cred: opts.credential, revStatus };
+      credentialWithRevStatus = { ...credentialWithRevStatus, revStatus };
     }
 
     if (!credentialWithRevStatus.cred) {
@@ -356,7 +392,8 @@ export class ProofService implements IProofService {
     const preparedCredential: PreparedCredential = {
       credential: credentialWithRevStatus.cred,
       credentialCoreClaim,
-      revStatus: credentialWithRevStatus.revStatus
+      revStatus: credentialWithRevStatus.revStatus,
+      issuerAuthRevStatus: credentialWithRevStatus.issuerAuthRevStatus
     };
 
     const subjectDID = DID.parse(preparedCredential.credential.credentialSubject['id'] as string);
@@ -746,22 +783,67 @@ export class ProofService implements IProofService {
 
   async findCredentialByProofQuery(
     did: DID,
-    query: ProofQuery
-  ): Promise<{ cred: W3CCredential; revStatus: RevocationStatus | undefined }> {
-    const credentials = await this._identityWallet.findOwnedCredentialsByDID(did, query);
+    query: ProofQuery,
+    opts?: { skipClaimRevocationCheck?: boolean; proofType?: ProofType }
+  ): Promise<CredentialWithRevocationStatuses> {
+    const ownedCredentials = await this._identityWallet.findOwnedCredentialsByDID(did, query);
 
-    if (!credentials.length) {
+    if (!ownedCredentials.length) {
       throw new Error(
         VerifiableConstants.ERRORS.PROOF_SERVICE_NO_CREDENTIAL_FOR_IDENTITY_OR_PROFILE
       );
     }
 
+    const proofType = opts?.proofType;
+    const credentials = ownedCredentials.filter((cred) => hasProofOfType(cred, proofType));
+    if (!credentials.length) {
+      throw new Error(
+        `${VerifiableConstants.ERRORS.PROOF_SERVICE_NO_CREDENTIAL_FOR_QUERY} with ${proofType} proof`
+      );
+    }
+
+    // circuits check the issuer auth claim that signed the credential even when the claim
+    // revocation check is skipped, so credentials signed with a revoked one can't be proven
+    const checkedCredentials = await Promise.all(
+      credentials.map(async (cred) => ({
+        cred,
+        issuerAuthRevStatus: await getIssuerAuthClaimRevocationStatus(
+          this._credentialWallet,
+          cred,
+          { proofType }
+        )
+      }))
+    );
+    const provableCredentials = checkedCredentials.filter(
+      ({ issuerAuthRevStatus }) => !issuerAuthRevStatus?.mtp.existence
+    );
+    if (!provableCredentials.length) {
+      throw new Error(VerifiableConstants.ERRORS.PROOF_SERVICE_ISSUER_AUTH_CLAIM_REVOKED);
+    }
+
     //  For EQ / IN / NIN / LT / GT operations selective if credential satisfies query - we can get any.
     // TODO: choose credential for selective credentials
-    const credential = query.skipClaimRevocationCheck
-      ? { cred: credentials[0], revStatus: undefined }
-      : await this._credentialWallet.findNonRevokedCredential(credentials);
+    const { cred, revStatus } = query.skipClaimRevocationCheck
+      ? { cred: provableCredentials[0].cred, revStatus: undefined }
+      : await this._credentialWallet.findNonRevokedCredential(
+          provableCredentials.map((c) => c.cred)
+        );
 
-    return credential;
+    // the issuer auth non-revocation proof of the found credential is reused to prove it
+    const issuerAuthRevStatus = provableCredentials.find(
+      (c) => c.cred === cred
+    )?.issuerAuthRevStatus;
+    return { cred, revStatus, issuerAuthRevStatus };
   }
 }
+
+const hasProofOfType = (credential: W3CCredential, proofType?: ProofType): boolean => {
+  switch (proofType) {
+    case ProofType.BJJSignature:
+      return !!credential.getBJJSignature2021Proof();
+    case ProofType.Iden3SparseMerkleTreeProof:
+      return !!credential.getIden3SparseMerkleTreeProof();
+    default:
+      return true;
+  }
+};

@@ -8,7 +8,8 @@ import {
   RevocationStatus,
   CredentialStatusType,
   State,
-  DisplayMethodType
+  DisplayMethodType,
+  ProofType
 } from './../verifiable';
 
 import { JSONSchema } from '../schema-processor';
@@ -364,3 +365,72 @@ export class CredentialWallet implements ICredentialWallet {
     throw new Error(VerifiableConstants.ERRORS.CREDENTIAL_WALLET_ALL_CREDENTIALS_ARE_REVOKED);
   }
 }
+
+/**
+ * Options of {@link isRevokedByIssuerAuthClaim}
+ *
+ * @public
+ * @property {ProofType} [proofType] - proof type the credential will be proven with, when the
+ *   circuit or the query forces one (see getRequiredProofType)
+ */
+export type IssuerAuthClaimCheckOptions = {
+  proofType?: ProofType;
+};
+
+/**
+ * Resolves the revocation status of the issuer auth claim (BJJ key) that signed the credential's
+ * BJJSignature2021 proof. Circuits always verify that this auth claim is not revoked, so a
+ * credential signed with a revoked one can't be proven with its signature anymore, although its
+ * own revocation nonce may still be valid. The status is also the issuer auth non-revocation proof
+ * used when the credential is proven, so it can be reused there instead of being resolved again.
+ *
+ * Only resolved when the signature will be used: when `opts.proofType` is BJJSignature2021, or,
+ * without a proof type, when the credential has no Iden3SparseMerkleTreeProof (js-sdk proves
+ * credentials via MTP by default).
+ *
+ * @param {ICredentialWallet} credentialWallet - wallet used to resolve the auth claim status
+ * @param {W3CCredential} credential - credential to check
+ * @param {IssuerAuthClaimCheckOptions} [opts] - proof type the credential will be proven with
+ * @returns `Promise<RevocationStatus | undefined>` - undefined when the signature won't be used,
+ *   or when its auth claim has no credential status
+ */
+export const getIssuerAuthClaimRevocationStatus = async (
+  credentialWallet: ICredentialWallet,
+  credential: W3CCredential,
+  opts?: IssuerAuthClaimCheckOptions
+): Promise<RevocationStatus | undefined> => {
+  const usesSignature = opts?.proofType
+    ? opts.proofType === ProofType.BJJSignature
+    : !credential.getIden3SparseMerkleTreeProof();
+  if (!usesSignature) {
+    return undefined;
+  }
+  const sigProof = credential.getBJJSignature2021Proof();
+  if (!sigProof?.issuerData.credentialStatus) {
+    return undefined;
+  }
+  const issuerDID = sigProof.issuerData.id;
+  return credentialWallet.getRevocationStatus(sigProof.issuerData.credentialStatus, {
+    issuerGenesisState: sigProof.issuerData.state,
+    issuerDID,
+    userDID: getUserDIDFromCredential(issuerDID, credential)
+  });
+};
+
+/**
+ * Checks whether a credential is revoked because the issuer revoked the auth claim (BJJ key)
+ * that signed its BJJSignature2021 proof (see {@link getIssuerAuthClaimRevocationStatus}).
+ *
+ * @param {ICredentialWallet} credentialWallet - wallet used to resolve the auth claim status
+ * @param {W3CCredential} credential - credential to check
+ * @param {IssuerAuthClaimCheckOptions} [opts] - proof type the credential will be proven with
+ * @returns `Promise<boolean>`
+ */
+export const isRevokedByIssuerAuthClaim = async (
+  credentialWallet: ICredentialWallet,
+  credential: W3CCredential,
+  opts?: IssuerAuthClaimCheckOptions
+): Promise<boolean> => {
+  const revStatus = await getIssuerAuthClaimRevocationStatus(credentialWallet, credential, opts);
+  return !!revStatus?.mtp.existence;
+};
